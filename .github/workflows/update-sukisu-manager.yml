@@ -63,63 +63,53 @@ jobs:
             --repo SukiSU-Ultra/SukiSU-Ultra \
             --dir manager
 
-      - name: Setup Java & Reverse Engineering Tools
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Install Apktool
+      - name: Inject System Binaries & Re-align APK
         run: |
-          sudo apt-get update
-          sudo apt-get install -y apktool
-
-      - name: Inject System Binaries & Rebuild APK
-        run: |
-          echo "Locating source APK..."
+          echo "Locating Gradle Release APK..."
           SRC_APK=$(find manager -type f -path '*/Manager-gradle/*.apk' | head -n 1)
           if [ -z "$SRC_APK" ]; then
             SRC_APK=$(find manager -type f -path '*/Manager/Manager.apk' | head -n 1)
           fi
 
           echo "Source APK: $SRC_APK"
+          cp "$SRC_APK" base.apk
 
-          # 1. تفكيك التطبيق كاملاً عبر Apktool
-          apktool d "$SRC_APK" -o apk_decompiled -f
-
-          # 2. تحديد موقع ملفات ksud المخصصة لمعمارية ARM64
+          # 1. تحديد موقع ملفات ksud المخصصة لمعمارية ARM64
           KSUD_BIN=$(find manager -type f -path '*/ksud-aarch64-linux-android/ksud' | head -n 1)
           KSUINIT_BIN=$(find manager -type f -path '*/ksuinit-aarch64/ksuinit' | head -n 1)
 
-          # 3. حقن الملفات في المجلدات التنفيذية النظامية بداخل التطبيق
-          mkdir -p apk_decompiled/lib/arm64-v8a
-          mkdir -p apk_decompiled/assets
+          # 2. إنشاء الهيكلية وحقن التنفيذات مباشرة داخل جذر الـ APK
+          mkdir -p lib/arm64-v8a assets
 
           if [ -f "$KSUD_BIN" ]; then
-            echo "Injecting ksud binary into native library and assets..."
-            cp "$KSUD_BIN" apk_decompiled/lib/arm64-v8a/libksud.so
-            cp "$KSUD_BIN" apk_decompiled/assets/ksud
-            chmod +x apk_decompiled/lib/arm64-v8a/libksud.so
+            echo "Injecting ksud binary..."
+            cp "$KSUD_BIN" lib/arm64-v8a/libksud.so
+            cp "$KSUD_BIN" assets/ksud
+            zip -g -r base.apk lib/arm64-v8a/libksud.so assets/ksud
           fi
 
           if [ -f "$KSUINIT_BIN" ]; then
             echo "Injecting ksuinit binary..."
-            cp "$KSUINIT_BIN" apk_decompiled/lib/arm64-v8a/libksuinit.so
-            cp "$KSUINIT_BIN" apk_decompiled/assets/ksuinit
+            cp "$KSUINIT_BIN" lib/arm64-v8a/libksuinit.so
+            cp "$KSUINIT_BIN" assets/ksuinit
+            zip -g -r base.apk lib/arm64-v8a/libksuinit.so assets/ksuinit
           fi
 
-          # 4. إعادة تجميع الـ APK المدمج بالكامل
-          apktool b apk_decompiled -o raw_rebuilt.apk
-
-          # 5. محاذاة الملف وتوقيعه بشهادة أندرويد رسمية (v2/v3 Sign)
+          # 3. توقيع ومحاذاة الـ APK لمنع انهيار الإقلاع
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
           BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
 
-          $BUILD_TOOLS/zipalign -v -p 4 raw_rebuilt.apk aligned.apk
+          $BUILD_TOOLS/zipalign -v -p 4 base.apk aligned.apk
           $BUILD_TOOLS/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out SukiSU-Manager.apk aligned.apk
 
-          echo "Standalone SukiSU-Manager.apk built successfully:"
+          echo "Standalone SukiSU-Manager.apk generated successfully:"
           ls -lh SukiSU-Manager.apk
 
       - name: Find latest TouchDirt release
