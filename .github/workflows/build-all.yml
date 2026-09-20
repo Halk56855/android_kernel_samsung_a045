@@ -1,4 +1,4 @@
-name: TouchDirt - Build All
+name: TouchDirt ReSukiSU - Build All
 
 on:
   workflow_dispatch:
