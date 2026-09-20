@@ -63,49 +63,30 @@ jobs:
             --repo SukiSU-Ultra/SukiSU-Ultra \
             --dir manager
 
-      - name: Setup Java & Android SDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Bundle ksud into APK and Sign
+      - name: Locate Original Manager APK
         run: |
-          echo "Downloaded artifacts list:"
+          echo "Downloaded files list:"
           find manager -type f -print
 
-          # 1. تحديد ملف الـ APK
-          mapfile -t APKS < <(find manager -type f -path '*/Manager-gradle/*.apk')
+          # اختيار APK الأصلي المبني مسبقاً من مجلد Manager أو Manager-gradle مباشرة
+          mapfile -t APKS < <(find manager -type f -path '*/Manager/Manager.apk')
+
           if [ "${#APKS[@]}" -lt 1 ]; then
-            mapfile -t APKS < <(find manager -type f -iname '*.apk' ! -path '*/Spoofed-Manager*')
+            mapfile -t APKS < <(find manager -type f -path '*/Manager-gradle/*.apk')
+          fi
+
+          if [ "${#APKS[@]}" -lt 1 ]; then
+            echo "ERROR: Could not find Manager.apk"
+            exit 1
           fi
 
           RAW_APK="${APKS[0]}"
-          echo "Base APK: $RAW_APK"
+          echo "Selected original APK: $RAW_APK"
 
-          # 2. تحديد ملف ksud الخاص بـ arm64
-          KSUD_FILE=$(find manager -type f -path '*/ksud-aarch64-linux-android/ksud' | head -n 1)
-          
-          # 3. دمج ملف ksud داخل الـ APK
-          mkdir -p assets
-          if [ -f "$KSUD_FILE" ]; then
-            echo "Found ksud: $KSUD_FILE"
-            cp "$KSUD_FILE" assets/ksud
-            zip -g "$RAW_APK" assets/ksud
-          else
-            echo "WARNING: ksud not found, proceeding without embedding."
-          fi
+          # نسخ الملف الأصلي بدون تعديل أو إعادة ضغط لتجنب تلف شفرة الإقلاع والشعار
+          cp "$RAW_APK" SukiSU-Manager.apk
 
-          # 4. إنشاء مفتاح توقيع جديد
-          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-
-          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
-
-          # 5. محاذاة وتوقيع الملف النهائي
-          $BUILD_TOOLS_DIR/zipalign -v -p 4 "$RAW_APK" aligned.apk
-          $BUILD_TOOLS_DIR/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out SukiSU-Manager.apk aligned.apk
-
-          echo "Final signed APK created successfully:"
+          echo "Final APK ready:"
           ls -lh SukiSU-Manager.apk
 
       - name: Find latest TouchDirt release
