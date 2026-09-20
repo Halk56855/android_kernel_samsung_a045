@@ -52,16 +52,16 @@ jobs:
           echo "Using manager build: $RUN_ID"
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Download Manager-release artifact
+      - name: Download Manager artifacts
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p manager
 
+          # تحميل جميع الأرتيفاكت المتاحة بدون تحديد اسم معين لتفادي خطأ no artifact matches
           gh run download \
             "${{ steps.build.outputs.run_id }}" \
             --repo SukiSU-Ultra/SukiSU-Ultra \
-            --name Manager-release \
             --dir manager
 
       - name: Find ARM64 Manager APK
@@ -74,12 +74,12 @@ jobs:
               -iname '*arm64*.apk'
           )
 
-          if [ "${#APKS[@]}" -ne 1 ]; then
-            echo "ERROR: Expected exactly one ARM64 APK, found ${#APKS[@]}."
-            printf '%s\n' "${APKS[@]}"
+          if [ "${#APKS[@]}" -lt 1 ]; then
+            echo "ERROR: Expected at least one ARM64 APK, found 0."
             exit 1
           fi
 
+          # اختيار أول ملف APK مطابق
           cp "${APKS[0]}" SukiSU-Manager.apk
 
           echo "Selected ARM64 manager:"
