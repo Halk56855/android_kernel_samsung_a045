@@ -17,14 +17,14 @@ jobs:
 
     - name: Integrating SukiSU
       run: |
-        echo "[-] Cloning ReSukiSU repo..."
+        echo "[-] Cloning SukiSU repo..."
         git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
 
-        echo "[-] Setup ReSukiSU..."
+        echo "[-] Setup SukiSU..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
         rm -rf KernelSU
-        git clone -b main https://github.com/ReSukiSU/ReSukiSU.git KernelSU
+        git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
 
     - name: SUSFS
       run: |
