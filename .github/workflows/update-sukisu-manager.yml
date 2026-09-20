@@ -68,11 +68,19 @@ jobs:
           echo "Downloaded files:"
           find manager -type f -print
 
-          # Targets manager/Manager/Manager.apk or manager/Manager-gradle/*.apk while excluding Spoofed-Manager
+          # اختيار ملف Release المبني عبر Manager-gradle
           mapfile -t APKS < <(
             find manager -type f \
-              -path '*/Manager*/*.apk' ! -path '*/Spoofed-Manager*'
+              -path '*/Manager-gradle/*.apk'
           )
+
+          # في حال عدم وجوده، البحث في المجلدات الأخرى مع استثناء Spoofed-Manager
+          if [ "${#APKS[@]}" -lt 1 ]; then
+            mapfile -t APKS < <(
+              find manager -type f \
+                -iname '*.apk' ! -path '*/Spoofed-Manager*'
+            )
+          fi
 
           if [ "${#APKS[@]}" -lt 1 ]; then
             echo "ERROR: Expected at least one Manager APK, found 0."
