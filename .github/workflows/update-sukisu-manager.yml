@@ -63,18 +63,24 @@ jobs:
             --repo SukiSU-Ultra/SukiSU-Ultra \
             --dir manager
 
-      - name: Find Manager APK
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Find and Sign Manager APK
         run: |
           echo "Downloaded files:"
           find manager -type f -print
 
-          # البحث أولاً عن تطبيق Gradle الأصلي المكتمل
+          # البحث أولاً عن ملفات الـ Gradle release
           mapfile -t APKS < <(
             find manager -type f \
               -path '*/Manager-gradle/*.apk'
           )
 
-          # في حال عدم وجوده، البحث عن أي APK باستثناء Spoofed-Manager
+          # إذا لم توجد، ابحث عن ملفات الـ Manager الأخرى واستثنِ Spoofed
           if [ "${#APKS[@]}" -lt 1 ]; then
             mapfile -t APKS < <(
               find manager -type f \
@@ -87,9 +93,17 @@ jobs:
             exit 1
           fi
 
-          cp "${APKS[0]}" SukiSU-Manager.apk
+          RAW_APK="${APKS[0]}"
+          echo "Selected APK: $RAW_APK"
 
-          echo "Selected manager APK:"
+          # إنشاء مفتاح توقيع مؤقت وتوقيع الـ APK به لمنع الـ Crash
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+
+          # استخدام apksigner للتحقق وتوقيع الـ APK بشهادة v2/v3
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+          $BUILD_TOOLS_DIR/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out SukiSU-Manager.apk "$RAW_APK"
+
+          echo "Signed APK successfully:"
           ls -lh SukiSU-Manager.apk
 
       - name: Find latest TouchDirt release
