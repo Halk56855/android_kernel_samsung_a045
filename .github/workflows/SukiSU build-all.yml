@@ -1,0 +1,93 @@
+name: TouchDirt SukiSU - Build All
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "TouchDirt version"
+        required: true
+        type: string
+        default: "v2.0.1"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  vanilla-enforcing:
+    name: Vanilla - Enforcing
+    uses: ./.github/workflows/vanilla-enforcing.yml
+    with:
+      version: ${{ inputs.version }}
+
+  vanilla-permissive:
+    name: Vanilla - Permissive
+    uses: ./.github/workflows/vanilla-permissive.yml
+    with:
+      version: ${{ inputs.version }}
+
+  resukisu-enforcing:
+    name: SukiSU - Enforcing
+    uses: ./.github/workflows/sukisu-enforcing.yml
+    with:
+      version: ${{ inputs.version }}
+
+  resukisu-permissive:
+    name: SukiSU - Permissive
+    uses: ./.github/workflows/sukisu-permissive.yml
+    with:
+      version: ${{ inputs.version }}
+
+  release:
+    name: Publish Release
+    needs:
+      - vanilla-enforcing
+      - vanilla-permissive
+      - resukisu-enforcing
+      - resukisu-permissive
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8.0.1
+        with:
+          path: release-assets
+
+      - name: List release assets
+        run: |
+          find release-assets -type f -print
+
+      - name: Get release version
+        id: version
+        run: |
+          FILE=$(find release-assets -type f -name '*.zip' | head -n 1)
+          VERSION=$(basename "$FILE" | sed -n 's/^TouchDirt-[^-]*-\(v[0-9.]*\)-.*/\1/p')
+
+          echo "Detected version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          gh release delete "$VERSION" --yes --cleanup-tag 2>/dev/null || true
+
+          gh release create "$VERSION" \
+            release-assets/*/*.zip \
+            --title "TouchDirt $VERSION" \
+            --notes-file ".github/release-notes/${VERSION}.md"
+
+  resukisu-manager:
+    name: SukiSU Manager
+    needs:
+      - release
+    uses: ./.github/workflows/update-resukisu-manager.yml
