@@ -63,30 +63,35 @@ jobs:
             --repo SukiSU-Ultra/SukiSU-Ultra \
             --dir manager
 
-      - name: Locate Original Manager APK
+      - name: Select Working Manager APK
         run: |
           echo "Downloaded files list:"
           find manager -type f -print
 
-          # اختيار APK الأصلي المبني مسبقاً من مجلد Manager أو Manager-gradle مباشرة
-          mapfile -t APKS < <(find manager -type f -path '*/Manager/Manager.apk')
+          # 1. البحث عن Spoofed-Manager المكتمل للتأكد من استقرار الإقلاع والشعار
+          mapfile -t APKS < <(find manager -type f -path '*/Spoofed-Manager/*.apk')
 
+          # 2. في حال عدم وجوده، البحث عن النسخة المجمعة عبر Spoofed-Manager-gradle
           if [ "${#APKS[@]}" -lt 1 ]; then
-            mapfile -t APKS < <(find manager -type f -path '*/Manager-gradle/*.apk')
+            mapfile -t APKS < <(find manager -type f -path '*/Spoofed-Manager-gradle/*.apk')
+          fi
+
+          # 3. خطة طوارئ: البحث عن أي APK جاهز
+          if [ "${#APKS[@]}" -lt 1 ]; then
+            mapfile -t APKS < <(find manager -type f -iname '*.apk')
           fi
 
           if [ "${#APKS[@]}" -lt 1 ]; then
-            echo "ERROR: Could not find Manager.apk"
+            echo "ERROR: Could not find any valid Manager APK."
             exit 1
           fi
 
-          RAW_APK="${APKS[0]}"
-          echo "Selected original APK: $RAW_APK"
+          SELECTED_APK="${APKS[0]}"
+          echo "Selected working APK: $SELECTED_APK"
 
-          # نسخ الملف الأصلي بدون تعديل أو إعادة ضغط لتجنب تلف شفرة الإقلاع والشعار
-          cp "$RAW_APK" SukiSU-Manager.apk
+          cp "$SELECTED_APK" SukiSU-Manager.apk
 
-          echo "Final APK ready:"
+          echo "Final APK ready for release:"
           ls -lh SukiSU-Manager.apk
 
       - name: Find latest TouchDirt release
