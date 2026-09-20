@@ -90,4 +90,4 @@ jobs:
     name: SukiSU Manager
     needs:
       - release
-    uses: ./.github/workflows/update-resukisu-manager.yml
+    uses: ./.github/workflows/update-sukisu-manager.yml
