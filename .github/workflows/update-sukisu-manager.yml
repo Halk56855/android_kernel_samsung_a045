@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   sync-manager:
-    name: Update SukiSU Manager
+    name: Build & Update SukiSU Standalone Manager
     runs-on: ubuntu-latest
 
     steps:
@@ -63,55 +63,63 @@ jobs:
             --repo SukiSU-Ultra/SukiSU-Ultra \
             --dir manager
 
-      - name: Setup Java
+      - name: Setup Java & Reverse Engineering Tools
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Build and Sign Standalone APK
+      - name: Install Apktool
         run: |
-          echo "Finding base APK..."
-          
-          # اختيار الـ APK الرئيسي
-          TARGET_APK=$(find manager -type f -path '*/Manager-gradle/*.apk' | head -n 1)
-          if [ -z "$TARGET_APK" ]; then
-            TARGET_APK=$(find manager -type f -path '*/Manager/Manager.apk' | head -n 1)
+          sudo apt-get update
+          sudo apt-get install -y apktool
+
+      - name: Inject System Binaries & Rebuild APK
+        run: |
+          echo "Locating source APK..."
+          SRC_APK=$(find manager -type f -path '*/Manager-gradle/*.apk' | head -n 1)
+          if [ -z "$SRC_APK" ]; then
+            SRC_APK=$(find manager -type f -path '*/Manager/Manager.apk' | head -n 1)
           fi
 
-          echo "Selected Base APK: $TARGET_APK"
-          
-          # نسخ الملف الأصلي للعمل عليه
-          cp "$TARGET_APK" base_working.apk
+          echo "Source APK: $SRC_APK"
 
-          # تحديد ملف ksud الخارجي
+          # 1. تفكيك التطبيق كاملاً عبر Apktool
+          apktool d "$SRC_APK" -o apk_decompiled -f
+
+          # 2. تحديد موقع ملفات ksud المخصصة لمعمارية ARM64
           KSUD_BIN=$(find manager -type f -path '*/ksud-aarch64-linux-android/ksud' | head -n 1)
+          KSUINIT_BIN=$(find manager -type f -path '*/ksuinit-aarch64/ksuinit' | head -n 1)
+
+          # 3. حقن الملفات في المجلدات التنفيذية النظامية بداخل التطبيق
+          mkdir -p apk_decompiled/lib/arm64-v8a
+          mkdir -p apk_decompiled/assets
 
           if [ -f "$KSUD_BIN" ]; then
-            echo "Embedding ksud correctly into Root Assets and Libs..."
-            
-            # إنشاء الهيكلية بأسماء المسارات الصحيحة مباشرة
-            mkdir -p lib/arm64-v8a
-            mkdir -p assets
-            
-            cp "$KSUD_BIN" lib/arm64-v8a/libksud.so
-            cp "$KSUD_BIN" assets/ksud
-
-            # إضافة الملفات إلى جذر الـ APK
-            zip -g base_working.apk lib/arm64-v8a/libksud.so
-            zip -g base_working.apk assets/ksud
+            echo "Injecting ksud binary into native library and assets..."
+            cp "$KSUD_BIN" apk_decompiled/lib/arm64-v8a/libksud.so
+            cp "$KSUD_BIN" apk_decompiled/assets/ksud
+            chmod +x apk_decompiled/lib/arm64-v8a/libksud.so
           fi
 
-          # إعداد مفتاح التوقيع
+          if [ -f "$KSUINIT_BIN" ]; then
+            echo "Injecting ksuinit binary..."
+            cp "$KSUINIT_BIN" apk_decompiled/lib/arm64-v8a/libksuinit.so
+            cp "$KSUINIT_BIN" apk_decompiled/assets/ksuinit
+          fi
+
+          # 4. إعادة تجميع الـ APK المدمج بالكامل
+          apktool b apk_decompiled -o raw_rebuilt.apk
+
+          # 5. محاذاة الملف وتوقيعه بشهادة أندرويد رسمية (v2/v3 Sign)
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
           BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
 
-          # المحاذاة والتوقيع النهائي بأداة apksigner
-          $BUILD_TOOLS/zipalign -v -p 4 base_working.apk aligned.apk
+          $BUILD_TOOLS/zipalign -v -p 4 raw_rebuilt.apk aligned.apk
           $BUILD_TOOLS/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out SukiSU-Manager.apk aligned.apk
 
-          echo "Standalone SukiSU Manager APK created successfully!"
+          echo "Standalone SukiSU-Manager.apk built successfully:"
           ls -lh SukiSU-Manager.apk
 
       - name: Find latest TouchDirt release
