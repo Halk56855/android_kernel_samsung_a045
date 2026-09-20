@@ -68,13 +68,13 @@ jobs:
           echo "Downloaded files:"
           find manager -type f -print
 
-          # اختيار ملف Release المبني عبر Manager-gradle
+          # البحث أولاً عن تطبيق Gradle الأصلي المكتمل
           mapfile -t APKS < <(
             find manager -type f \
               -path '*/Manager-gradle/*.apk'
           )
 
-          # في حال عدم وجوده، البحث في المجلدات الأخرى مع استثناء Spoofed-Manager
+          # في حال عدم وجوده، البحث عن أي APK باستثناء Spoofed-Manager
           if [ "${#APKS[@]}" -lt 1 ]; then
             mapfile -t APKS < <(
               find manager -type f \
