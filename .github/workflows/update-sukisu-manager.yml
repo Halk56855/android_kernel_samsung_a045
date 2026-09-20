@@ -58,31 +58,30 @@ jobs:
         run: |
           mkdir -p manager
 
-          # تحميل جميع الأرتيفاكت المتاحة بدون تحديد اسم معين لتفادي خطأ no artifact matches
           gh run download \
             "${{ steps.build.outputs.run_id }}" \
             --repo SukiSU-Ultra/SukiSU-Ultra \
             --dir manager
 
-      - name: Find ARM64 Manager APK
+      - name: Find Manager APK
         run: |
           echo "Downloaded files:"
           find manager -type f -print
 
+          # Targets manager/Manager/Manager.apk or manager/Manager-gradle/*.apk while excluding Spoofed-Manager
           mapfile -t APKS < <(
             find manager -type f \
-              -iname '*arm64*.apk'
+              -path '*/Manager*/*.apk' ! -path '*/Spoofed-Manager*'
           )
 
           if [ "${#APKS[@]}" -lt 1 ]; then
-            echo "ERROR: Expected at least one ARM64 APK, found 0."
+            echo "ERROR: Expected at least one Manager APK, found 0."
             exit 1
           fi
 
-          # اختيار أول ملف APK مطابق
           cp "${APKS[0]}" SukiSU-Manager.apk
 
-          echo "Selected ARM64 manager:"
+          echo "Selected manager APK:"
           ls -lh SukiSU-Manager.apk
 
       - name: Find latest TouchDirt release
