@@ -63,35 +63,53 @@ jobs:
             --repo SukiSU-Ultra/SukiSU-Ultra \
             --dir manager
 
-      - name: Select Working Manager APK
+      - name: Setup Environment Tools
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Smart Patch & Build Standalone APK
         run: |
-          echo "Downloaded files list:"
-          find manager -type f -print
-
-          # 1. البحث عن Spoofed-Manager المكتمل للتأكد من استقرار الإقلاع والشعار
-          mapfile -t APKS < <(find manager -type f -path '*/Spoofed-Manager/*.apk')
-
-          # 2. في حال عدم وجوده، البحث عن النسخة المجمعة عبر Spoofed-Manager-gradle
-          if [ "${#APKS[@]}" -lt 1 ]; then
-            mapfile -t APKS < <(find manager -type f -path '*/Spoofed-Manager-gradle/*.apk')
+          echo "Processing artifacts..."
+          
+          # 1. تحديد الـ APK الأساسي المستهدف
+          TARGET_APK=$(find manager -type f -path '*/Manager-gradle/*.apk' | head -n 1)
+          if [ -z "$TARGET_APK" ]; then
+            TARGET_APK=$(find manager -type f -path '*/Manager/Manager.apk' | head -n 1)
           fi
 
-          # 3. خطة طوارئ: البحث عن أي APK جاهز
-          if [ "${#APKS[@]}" -lt 1 ]; then
-            mapfile -t APKS < <(find manager -type f -iname '*.apk')
+          echo "Base APK: $TARGET_APK"
+
+          # 2. تحديد ملف ksud الخارجي وتكييفه كمكتبة نظام Native Library
+          KSUD_BIN=$(find manager -type f -path '*/ksud-aarch64-linux-android/ksud' | head -n 1)
+
+          mkdir -p apk_patch/lib/arm64-v8a
+          mkdir -p apk_patch/assets
+
+          if [ -f "$KSUD_BIN" ]; then
+            echo "Embedding ksud binaries into Native & Assets directories..."
+            cp "$KSUD_BIN" apk_patch/lib/arm64-v8a/libksud.so
+            cp "$KSUD_BIN" apk_patch/assets/ksud
+            chmod +x apk_patch/lib/arm64-v8a/libksud.so
           fi
 
-          if [ "${#APKS[@]}" -lt 1 ]; then
-            echo "ERROR: Could not find any valid Manager APK."
-            exit 1
-          fi
+          # 3. دمج المكتبات بداخل هيكلية التطبيق
+          cd apk_patch
+          zip -r -g "../patched.apk" .
+          cd ..
+          cp "$TARGET_APK" temp.apk
+          zip -g temp.apk -r apk_patch/*
 
-          SELECTED_APK="${APKS[0]}"
-          echo "Selected working APK: $SELECTED_APK"
+          # 4. محاذاة الملف وتحضيره للتوقيع الرقمي الصارم (Aligning & Signing)
+          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+          
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
 
-          cp "$SELECTED_APK" SukiSU-Manager.apk
+          $BUILD_TOOLS/zipalign -v -p 4 temp.apk aligned.apk
+          $BUILD_TOOLS/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out SukiSU-Manager.apk aligned.apk
 
-          echo "Final APK ready for release:"
+          echo "Standalone SukiSU Manager APK ready!"
           ls -lh SukiSU-Manager.apk
 
       - name: Find latest TouchDirt release
