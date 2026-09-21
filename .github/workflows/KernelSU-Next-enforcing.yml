@@ -31,14 +31,14 @@ jobs:
         fi
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-    - name: Integrating KernelSU-Next
+    - name: Integrating KernelSU-Next (Legacy for Non-GKI)
       run: |
-        echo "[-] Cloning KernelSU-Next repo..."
+        echo "[-] Cloning KernelSU-Next repo (legacy branch)..."
         git clone -b legacy https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU
 
         echo "[-] Setup KernelSU-Next..."
         chmod +x ./KernelSU/kernel/setup.sh
-        ./KernelSU/kernel/setup.sh
+        ./KernelSU/kernel/setup.sh legacy
 
     - name: SUSFS
       run: |
@@ -101,6 +101,9 @@ jobs:
         if [ -f "arch/arm64/configs/touchdirt.config" ]; then
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
+
+        echo "CONFIG_KSU=y" >> $(pwd)/out/.config
+        echo "CONFIG_KSU_SUSFS=y" >> $(pwd)/out/.config
 
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
         sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-KSU-Next-${BUILD_VER}\"/" out/.config
