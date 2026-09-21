@@ -1,7 +1,7 @@
-name: Sync SukiSU Manager
+name: Sync SukiSU-Ultra Manager
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
   workflow_call:
 
 permissions:
@@ -10,18 +10,19 @@ permissions:
 
 jobs:
   sync-manager:
-    name: Build & Update SukiSU Standalone Manager
+    name: Update SukiSU-Ultra Manager
     runs-on: ubuntu-latest
 
     steps:
-      - name: Get latest SukiSU main commit
+      - name: Get latest SukiSU-Ultra main commit
         id: sukisu
         run: |
-          SHA=$(git ls-remote \
-            https://github.com/SukiSU-Ultra/SukiSU-Ultra.git \
-            refs/heads/main | awk '{print $1}')
-
-          echo "SukiSU main: $SHA"
+          SHA=$(git ls-remote https://github.com/SukiSU-Ultra/SukiSU-Ultra.git refs/heads/main | awk '{print $1}')
+          if [ -z "$SHA" ]; then
+            echo "::error::Could not resolve commit SHA from SukiSU-Ultra main branch."
+            exit 1
+          fi
+          echo "SukiSU-Ultra main: $SHA"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
       - name: Find matching manager build
@@ -31,88 +32,51 @@ jobs:
         run: |
           SHA="${{ steps.sukisu.outputs.sha }}"
 
-          RUN_ID=$(gh api \
-            "repos/SukiSU-Ultra/SukiSU-Ultra/actions/workflows/build-manager.yml/runs?head_sha=${SHA}&status=success&per_page=1" \
+          RUN_ID=$(gh api "repos/SukiSU-Ultra/SukiSU-Ultra/actions/workflows/build-manager.yml/runs?head_sha=${SHA}&status=success&per_page=1" \
             --jq '.workflow_runs[0].id // empty')
 
           if [ -z "$RUN_ID" ]; then
-            echo "No manager build found for $SHA"
-            echo "Falling back to latest successful main build..."
-
-            RUN_ID=$(gh api \
-              "repos/SukiSU-Ultra/SukiSU-Ultra/actions/workflows/build-manager.yml/runs?branch=main&status=success&per_page=1" \
+            echo "No manager build found for $SHA. Falling back to latest successful main build..."
+            RUN_ID=$(gh api "repos/SukiSU-Ultra/SukiSU-Ultra/actions/workflows/build-manager.yml/runs?branch=main&status=success&per_page=1" \
               --jq '.workflow_runs[0].id // empty')
           fi
 
           if [ -z "$RUN_ID" ]; then
-            echo "ERROR: Could not find a successful SukiSU manager build."
+            echo "::error::Could not find a successful SukiSU-Ultra manager build."
             exit 1
           fi
 
           echo "Using manager build: $RUN_ID"
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Download Manager artifacts
+      - name: Download Manager-release artifact
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p manager
-
-          gh run download \
-            "${{ steps.build.outputs.run_id }}" \
+          gh run download "${{ steps.build.outputs.run_id }}" \
             --repo SukiSU-Ultra/SukiSU-Ultra \
+            --name Manager-release \
             --dir manager
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Inject System Binaries & Re-align APK
+      - name: Find ARM64 Manager APK
         run: |
-          echo "Locating Gradle Release APK..."
-          SRC_APK=$(find manager -type f -path '*/Manager-gradle/*.apk' | head -n 1)
-          if [ -z "$SRC_APK" ]; then
-            SRC_APK=$(find manager -type f -path '*/Manager/Manager.apk' | head -n 1)
+          echo "Downloaded files:"
+          find manager -type f -print
+
+          mapfile -t APKS < <(find manager -type f -iname '*arm64*.apk')
+
+          if [ "${#APKS[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one ARM64 APK, found ${#APKS[@]}."
+            printf '%s\n' "${APKS[@]}"
+            exit 1
           fi
 
-          echo "Source APK: $SRC_APK"
-          cp "$SRC_APK" base.apk
-
-          # 1. تحديد موقع ملفات ksud المخصصة لمعمارية ARM64
-          KSUD_BIN=$(find manager -type f -path '*/ksud-aarch64-linux-android/ksud' | head -n 1)
-          KSUINIT_BIN=$(find manager -type f -path '*/ksuinit-aarch64/ksuinit' | head -n 1)
-
-          # 2. إنشاء الهيكلية وحقن التنفيذات مباشرة داخل جذر الـ APK
-          mkdir -p lib/arm64-v8a assets
-
-          if [ -f "$KSUD_BIN" ]; then
-            echo "Injecting ksud binary..."
-            cp "$KSUD_BIN" lib/arm64-v8a/libksud.so
-            cp "$KSUD_BIN" assets/ksud
-            zip -g -r base.apk lib/arm64-v8a/libksud.so assets/ksud
-          fi
-
-          if [ -f "$KSUINIT_BIN" ]; then
-            echo "Injecting ksuinit binary..."
-            cp "$KSUINIT_BIN" lib/arm64-v8a/libksuinit.so
-            cp "$KSUINIT_BIN" assets/ksuinit
-            zip -g -r base.apk lib/arm64-v8a/libksuinit.so assets/ksuinit
-          fi
-
-          # 3. توقيع ومحاذاة الـ APK لمنع انهيار الإقلاع
-          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-
-          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
-
-          $BUILD_TOOLS/zipalign -v -p 4 base.apk aligned.apk
-          $BUILD_TOOLS/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out SukiSU-Manager.apk aligned.apk
-
-          echo "Standalone SukiSU-Manager.apk generated successfully:"
+          cp "${APKS[0]}" SukiSU-Manager.apk
+          echo "Selected ARM64 manager:"
           ls -lh SukiSU-Manager.apk
 
-      - name: Find latest TouchDirt release
+      - name: Find latest release
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -126,11 +90,11 @@ jobs:
             --jq '.[0].tagName')
 
           if [ -z "$TAG" ]; then
-            echo "ERROR: No published TouchDirt release found."
+            echo "::error::No published release found in target repository."
             exit 1
           fi
 
-          echo "Latest TouchDirt release: $TAG"
+          echo "Target release tag: $TAG"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Upload SukiSU Manager
