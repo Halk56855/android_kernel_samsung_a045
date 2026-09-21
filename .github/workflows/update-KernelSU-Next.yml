@@ -36,12 +36,13 @@ jobs:
         run: |
           SHA="${{ steps.ksud.outputs.sha }}"
 
-          RUN_ID=$(gh api "repos/KernelSU-Next/KernelSU-Next/actions/workflows/build-manager.yml/runs?head_sha=${SHA}&status=success&per_page=1" \
+          # البحث باستخدام اسم build-manager-ci.yml الصحيح
+          RUN_ID=$(gh api "repos/KernelSU-Next/KernelSU-Next/actions/workflows/build-manager-ci.yml/runs?head_sha=${SHA}&status=success&per_page=1" \
             --jq '.workflow_runs[0].id // empty')
 
           if [ -z "$RUN_ID" ]; then
             echo "No manager build found for $SHA. Falling back to latest successful build on dev branch..."
-            RUN_ID=$(gh api "repos/KernelSU-Next/KernelSU-Next/actions/workflows/build-manager.yml/runs?branch=dev&status=success&per_page=1" \
+            RUN_ID=$(gh api "repos/KernelSU-Next/KernelSU-Next/actions/workflows/build-manager-ci.yml/runs?branch=dev&status=success&per_page=1" \
               --jq '.workflow_runs[0].id // empty')
           fi
 
@@ -53,34 +54,29 @@ jobs:
           echo "Using manager build: $RUN_ID"
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Download All Artifacts
+      - name: Download Manager Artifact
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p manager
-          # تنزيل كافة المخرجات دون تحديد اسم معين لتفادي خطأ تسمية Artifact
+          # تنزيل الـ artifact المسمى manager
           gh run download "${{ steps.build.outputs.run_id }}" \
             --repo KernelSU-Next/KernelSU-Next \
+            --name manager \
             --dir manager
 
-      - name: Find ARM64 Manager APK
+      - name: Find Manager APK
         run: |
           echo "Downloaded files:"
           find manager -type f -print
 
-          # البحث عن ملفات APK
-          mapfile -t APKS < <(find manager -type f -iname '*arm64*.apk')
+          mapfile -t APKS < <(find manager -type f -iname '*.apk')
 
-          if [ "${#APKS[@]}" -ne 0 ]; then
+          if [ "${#APKS[@]}" -ge 1 ]; then
             cp "${APKS[0]}" KernelSU-Next-Manager.apk
           else
-            mapfile -t ALL_APKS < <(find manager -type f -iname '*.apk')
-            if [ "${#ALL_APKS[@]}" -ge 1 ]; then
-              cp "${ALL_APKS[0]}" KernelSU-Next-Manager.apk
-            else
-              echo "::error::No APK found in the downloaded artifacts."
-              exit 1
-            fi
+            echo "::error::No APK found in the manager artifact."
+            exit 1
           fi
 
           echo "Selected manager APK:"
