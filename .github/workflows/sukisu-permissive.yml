@@ -1,4 +1,4 @@
-name: Build TouchDirt Kernel, SukiSU, Permissive
+name: Build TouchDirt Kernel, SukiSU-Ultra, Permissive
 on:
   workflow_dispatch:
   workflow_call:
@@ -13,18 +13,14 @@ jobs:
 
     steps:
     - name: Checkout source
-      uses: actions/checkout@v7.0.1
+      uses: actions/checkout@v4
 
-    - name: Integrating SukiSU
+    - name: Integrating SukiSU-Ultra
       run: |
-        echo "[-] Cloning SukiSU repo..."
+        echo "[-] Cloning and setting up SukiSU-Ultra repo..."
         git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
-
-        echo "[-] Setup SukiSU..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
-        rm -rf KernelSU
-        git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
 
     - name: SUSFS
       run: |
@@ -66,6 +62,7 @@ jobs:
         GCC_PATH="$(pwd)/toolchain/gcc/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu/bin"
 
         echo "$CLANG_PATH" >> $GITHUB_PATH
+        echo "$GCC_PATH" >> $GITHUB_PATH
 
         echo "CROSS_COMPILE=$GCC_PATH/aarch64-none-linux-gnu-" >> $GITHUB_ENV
         echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> $GITHUB_ENV
@@ -85,14 +82,19 @@ jobs:
       run: |
         make -C $(pwd) O=$(pwd)/out touchdirt-a04_defconfig
 
-        if [ -f "arch/arm64/configs/touchdirt.config" ]; then
+        if [ -f "arch/arm64/configs/touchdirt-permissive.config" ]; then
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt-permissive.config
         fi
 
-        grep '^CONFIG_LOCALVERSION=' out/.config
+        grep '^CONFIG_LOCALVERSION=' out/.config || true
 
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
-        sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-SukiSU-PERMISSIVE-${{ inputs.version }}\"/" out/.config
+
+        if [ "${{ github.event_name }}" = "workflow_call" ] && [ -n "${{ inputs.version }}" ]; then
+            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-SukiSU-Ultra-PERMISSIVE-${{ inputs.version }}\"/" out/.config
+        else
+            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-SukiSU-Ultra-PERMISSIVE-BETA\"/" out/.config
+        fi
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
@@ -106,7 +108,9 @@ jobs:
       id: version
       run: |
         VERSION="${{ inputs.version }}"
-        echo "VERSION=$VERSION"
+        if [ -z "$VERSION" ]; then
+          VERSION="BETA"
+        fi
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
     - name: Package AnyKernel3
@@ -118,10 +122,10 @@ jobs:
         cp out/arch/arm64/boot/Image AnyKernel3/Image
 
         cd AnyKernel3
-        zip -r9 "../TouchDirt-SukiSU-${{ steps.version.outputs.version }}-${DATE}-Permissive.zip" . -x ".git/*"
+        zip -r9 "../TouchDirt-SukiSU-Ultra-${{ steps.version.outputs.version }}-${DATE}-Permissive.zip" . -x ".git/*"
 
     - name: Upload AnyKernel3 ZIP
-      uses: actions/upload-artifact@v7.0.1
+      uses: actions/upload-artifact@v4
       with:
-        name: TouchDirt-SukiSU-Permissive
+        name: TouchDirt-SukiSU-Ultra-Permissive
         path: TouchDirt-*.zip
