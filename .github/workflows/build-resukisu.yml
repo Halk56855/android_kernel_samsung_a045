@@ -1,0 +1,79 @@
+name: TouchDirt - Build ReSukiSU
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "TouchDirt version"
+        required: true
+        type: string
+        default: "v1.x.x (INSERT VERSION HERE)"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  resukisu-enforcing:
+    name: ReSukiSU - Enforcing
+    uses: ./.github/workflows/resukisu-enforcing.yml
+    with:
+      version: ${{ inputs.version }}
+
+  resukisu-permissive:
+    name: ReSukiSU - Permissive
+    uses: ./.github/workflows/resukisu-permissive.yml
+    with:
+      version: ${{ inputs.version }}
+
+  release:
+    name: Publish Release
+    needs:
+      - resukisu-enforcing
+      - resukisu-permissive
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8.0.1
+        with:
+          path: release-assets
+
+      - name: List release assets
+        run: |
+          find release-assets -type f -print
+
+      - name: Get release version
+        id: version
+        run: |
+          FILE=$(find release-assets -type f -name '*.zip' | head -n 1)
+          VERSION=$(basename "$FILE" | sed -n 's/^TouchDirt-[^-]*-\(v[0-9.]*\)-.*/\1/p')
+
+          echo "Detected version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          gh release delete "$VERSION" --yes --cleanup-tag 2>/dev/null || true
+
+          gh release create "$VERSION" \
+            release-assets/*/*.zip \
+            --title "TouchDirt $VERSION" \
+            --notes-file ".github/release-notes/${VERSION}.md"
+
+  resukisu-manager:
+    name: ReSukiSU Manager
+    needs:
+      - release
+    uses: ./.github/workflows/update-resukisu-manager.yml
