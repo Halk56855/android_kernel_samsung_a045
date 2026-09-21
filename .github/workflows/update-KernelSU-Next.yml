@@ -1,4 +1,4 @@
-name: Sync KernelSU-Next Manager
+name: Sync KernelSU-Next Legacy Manager
 
 on:
   workflow_dispatch:
@@ -10,24 +10,40 @@ permissions:
 
 jobs:
   sync-manager:
-    name: Update KernelSU-Next Manager
+    name: Update KernelSU-Next Legacy Manager
     runs-on: ubuntu-latest
 
     steps:
-      - name: Get latest KernelSU-Next dev commit
+      - name: Get latest Legacy release tag and commit
         id: ksud
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          SHA=$(gh api "repos/KernelSU-Next/KernelSU-Next/commits?sha=dev&per_page=1" --jq '.[0].sha')
+          # جلب أحدث Tag يحتوي على الكلمة legacy
+          TAG=$(gh release list \
+            --repo KernelSU-Next/KernelSU-Next \
+            --limit 20 \
+            --json tagName \
+            --jq '.[] | select(.tagName | contains("legacy")) | .tagName' | head -n 1)
 
-          if [ -z "$SHA" ]; then
-            echo "::error::Could not resolve commit SHA from KernelSU-Next dev branch."
+          if [ -z "$TAG" ]; then
+            echo "::error::Could not find any legacy tag in KernelSU-Next repository."
             exit 1
           fi
 
-          echo "KernelSU-Next dev commit: $SHA"
+          echo "Found latest legacy tag: $TAG"
+
+          # جلب الـ Commit SHA المرتبط بـ Tag الـ Legacy
+          SHA=$(gh api "repos/KernelSU-Next/KernelSU-Next/commits/$TAG" --jq '.sha')
+
+          if [ -z "$SHA" ]; then
+            echo "::error::Could not resolve commit SHA for tag $TAG."
+            exit 1
+          fi
+
+          echo "KernelSU-Next legacy commit: $SHA"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Find matching manager build
         id: build
@@ -36,18 +52,18 @@ jobs:
         run: |
           SHA="${{ steps.ksud.outputs.sha }}"
 
-          # البحث باستخدام اسم build-manager-ci.yml الصحيح
+          # البحث عن بناء ناجح مخصص لـ SHA الخاص بـ Legacy
           RUN_ID=$(gh api "repos/KernelSU-Next/KernelSU-Next/actions/workflows/build-manager-ci.yml/runs?head_sha=${SHA}&status=success&per_page=1" \
             --jq '.workflow_runs[0].id // empty')
 
           if [ -z "$RUN_ID" ]; then
-            echo "No manager build found for $SHA. Falling back to latest successful build on dev branch..."
-            RUN_ID=$(gh api "repos/KernelSU-Next/KernelSU-Next/actions/workflows/build-manager-ci.yml/runs?branch=dev&status=success&per_page=1" \
+            echo "No direct manager build found for $SHA. Searching latest successful build..."
+            RUN_ID=$(gh api "repos/KernelSU-Next/KernelSU-Next/actions/workflows/build-manager-ci.yml/runs?status=success&per_page=1" \
               --jq '.workflow_runs[0].id // empty')
           fi
 
           if [ -z "$RUN_ID" ]; then
-            echo "::error::Could not find a successful KernelSU-Next manager build for dev branch."
+            echo "::error::Could not find a successful KernelSU-Next manager build."
             exit 1
           fi
 
@@ -59,7 +75,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p manager
-          # تنزيل الـ artifact المسمى manager
           gh run download "${{ steps.build.outputs.run_id }}" \
             --repo KernelSU-Next/KernelSU-Next \
             --name manager \
@@ -73,14 +88,14 @@ jobs:
           mapfile -t APKS < <(find manager -type f -iname '*.apk')
 
           if [ "${#APKS[@]}" -ge 1 ]; then
-            cp "${APKS[0]}" KernelSU-Next-Manager.apk
+            cp "${APKS[0]}" KernelSU-Next-Manager-Legacy.apk
           else
             echo "::error::No APK found in the manager artifact."
             exit 1
           fi
 
-          echo "Selected manager APK:"
-          ls -lh KernelSU-Next-Manager.apk
+          echo "Selected legacy manager APK:"
+          ls -lh KernelSU-Next-Manager-Legacy.apk
 
       - name: Find latest release
         id: release
@@ -103,12 +118,12 @@ jobs:
           echo "Target release tag: $TAG"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Upload KernelSU-Next Manager
+      - name: Upload KernelSU-Next Legacy Manager
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload \
             "${{ steps.release.outputs.tag }}" \
-            KernelSU-Next-Manager.apk \
+            KernelSU-Next-Manager-Legacy.apk \
             --repo "${{ github.repository }}" \
             --clobber
