@@ -1,6 +1,13 @@
-name: Build TouchDirt Kernel, SukiSU, Enforcing
+name: Build TouchDirt Kernel, SukiSU-Ultra, Enforcing
+
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Kernel Build Version'
+        required: false
+        default: 'BETA'
+        type: string
   workflow_call:
     inputs:
       version:
@@ -13,18 +20,25 @@ jobs:
 
     steps:
     - name: Checkout source
-      uses: actions/checkout@v7.0.1
+      uses: actions/checkout@v4
 
-    - name: Integrating SukiSU
+    - name: Determine Version
+      id: set_version
       run: |
-        echo "[-] Cloning SukiSU repo..."
+        VERSION="${{ inputs.version }}"
+        if [ -z "$VERSION" ]; then
+          VERSION="BETA"
+        fi
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+    - name: Integrating SukiSU-Ultra
+      run: |
+        echo "[-] Cloning SukiSU-Ultra repo..."
         git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
 
-        echo "[-] Setup SukiSU..."
+        echo "[-] Setup SukiSU-Ultra..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
-        rm -rf KernelSU
-        git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
 
     - name: SUSFS
       run: |
@@ -40,13 +54,10 @@ jobs:
           libncurses5-dev ccache make git zip wget xz-utils \
           device-tree-compiler libfdt-dev gcc-arm-linux-gnueabi cpio
 
-    - name: Prepare Toolchains directories
-      run: |
-        mkdir -p toolchain/gcc
-        mkdir -p toolchain/clang
-
     - name: Download GCC & Clang Toolchain
       run: |
+        mkdir -p toolchain/gcc toolchain/clang
+
         cd toolchain/gcc
         wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
           https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz || \
@@ -83,45 +94,38 @@ jobs:
 
     - name: Configure and Compile Kernel
       run: |
+        BUILD_VER="${{ steps.set_version.outputs.version }}"
+
         make -C $(pwd) O=$(pwd)/out touchdirt-a04_defconfig
 
         if [ -f "arch/arm64/configs/touchdirt.config" ]; then
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
-        grep '^CONFIG_LOCALVERSION=' out/.config
-
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
-        sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-SukiSU-${{ inputs.version }}\"/" out/.config
+        sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-SukiSU-Ultra-${BUILD_VER}\"/" out/.config
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
-
         make -C $(pwd) O=$(pwd)/out prepare
         make -C $(pwd) O=$(pwd)/out scripts
         make -C $(pwd) O=$(pwd)/out security/
 
         make -C $(pwd) O=$(pwd)/out -j$(nproc) || make -C $(pwd) O=$(pwd)/out -j1
 
-    - name: Get kernel version
-      id: version
-      run: |
-        VERSION="${{ inputs.version }}"
-        echo "VERSION=$VERSION"
-        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
     - name: Package AnyKernel3
       run: |
         DATE=$(date -u +"%Y-%m-%d")
+        BUILD_VER="${{ steps.set_version.outputs.version }}"
 
         git clone https://github.com/DaniTheSillyFem/AnyKernel3 --depth 1
 
         cp out/arch/arm64/boot/Image AnyKernel3/Image
 
         cd AnyKernel3
-        zip -r9 "../TouchDirt-SukiSU-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
+        zip -r9 "../TouchDirt-SukiSU-Ultra-${BUILD_VER}-${DATE}.zip" . -x ".git/*"
 
     - name: Upload AnyKernel3 ZIP
-      uses: actions/upload-artifact@v7.0.1
+      uses: actions/upload-artifact@v4
       with:
-        name: TouchDirt-SukiSU-Enforcing
+        name: TouchDirt-SukiSU-Ultra-Enforcing
         path: TouchDirt-*.zip
