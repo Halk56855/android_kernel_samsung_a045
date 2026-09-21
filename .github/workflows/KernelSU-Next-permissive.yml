@@ -18,7 +18,7 @@ jobs:
     - name: Integrating KernelSU-Next
       run: |
         echo "[-] Cloning and setting up KernelSU-Next repo..."
-        git clone -b next https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU
+        git clone -b dev https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
