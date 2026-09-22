@@ -15,18 +15,10 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Integrating KernelSU-Next
+    - name: Integrating KernelSU-Next (Legacy)
       run: |
-        echo "[-] Cloning and setting up KernelSU-Next repo..."
-        git clone -b legacy https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU
-        chmod +x ./KernelSU/kernel/setup.sh
-        ./KernelSU/kernel/setup.sh legacy
-
-        # إنشاء رابط رمزي وتحديث drivers/Makefile لضمان تجميع KernelSU
-        ln -sf $(pwd)/KernelSU/kernel drivers/kernelsu
-        if ! grep -q "obj-y += kernelsu/" drivers/Makefile; then
-            echo "obj-y += kernelsu/" >> drivers/Makefile
-        fi
+        echo "[-] Integrating KernelSU-Next Legacy branch via setup.sh..."
+        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
     - name: SUSFS
       run: |
@@ -92,7 +84,7 @@ jobs:
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt-permissive.config
         fi
 
-        # تفعيل خيارات KSU في تكوين النواة
+        # تفعيل KSU في الـ config
         echo "CONFIG_KSU=y" >> $(pwd)/out/.config
 
         grep '^CONFIG_LOCALVERSION=' out/.config || true
