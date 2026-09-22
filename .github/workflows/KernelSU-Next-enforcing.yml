@@ -31,7 +31,7 @@ jobs:
         fi
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-    - name: Integrating KernelSU-Next (Legacy for Non-GKI)
+    - name: Integrating KernelSU-Next (Legacy)
       run: |
         echo "[-] Cloning KernelSU-Next repo (legacy branch)..."
         git clone -b legacy https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU
@@ -102,13 +102,22 @@ jobs:
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
+        # التأكد من كتابة الخيارات وإلغاء تعطيلها
+        sed -i '/CONFIG_KSU/d' $(pwd)/out/.config
+        sed -i '/CONFIG_KSU_SUSFS/d' $(pwd)/out/.config
         echo "CONFIG_KSU=y" >> $(pwd)/out/.config
         echo "CONFIG_KSU_SUSFS=y" >> $(pwd)/out/.config
 
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
         sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-KSU-Next-${BUILD_VER}\"/" out/.config
 
+        # دمج الخيارات بدون تحويل CONFIG_KSU إلى 'n'
         make -C $(pwd) O=$(pwd)/out olddefconfig
+
+        # إعادة تأكيد التفعيل بعد olddefconfig لضمان عدم حدوث أي Override
+        sed -i 's/.*CONFIG_KSU.*/CONFIG_KSU=y/' $(pwd)/out/.config
+        sed -i 's/.*CONFIG_KSU_SUSFS.*/CONFIG_KSU_SUSFS=y/' $(pwd)/out/.config
+
         make -C $(pwd) O=$(pwd)/out prepare
         make -C $(pwd) O=$(pwd)/out scripts
         make -C $(pwd) O=$(pwd)/out security/
