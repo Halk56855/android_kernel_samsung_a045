@@ -40,6 +40,11 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh legacy
 
+        # إجبار التجميع عبر ربط المجلد بـ drivers/Makefile يدويًا لمنع تجاهله
+        if ! grep -q "kernelsu" drivers/Makefile; then
+          echo "obj-y += kernelsu/" >> drivers/Makefile
+        fi
+
     - name: SUSFS
       run: |
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
@@ -102,21 +107,21 @@ jobs:
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
-        # التأكد من كتابة الخيارات وإلغاء تعطيلها
-        sed -i '/CONFIG_KSU/d' $(pwd)/out/.config
-        sed -i '/CONFIG_KSU_SUSFS/d' $(pwd)/out/.config
+        # تفعيل جميع خيارات KernelSU الممكنة
         echo "CONFIG_KSU=y" >> $(pwd)/out/.config
+        echo "CONFIG_KERNELSU=y" >> $(pwd)/out/.config
         echo "CONFIG_KSU_SUSFS=y" >> $(pwd)/out/.config
+        echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> $(pwd)/out/.config
 
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
         sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-KSU-Next-${BUILD_VER}\"/" out/.config
 
-        # دمج الخيارات بدون تحويل CONFIG_KSU إلى 'n'
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
-        # إعادة تأكيد التفعيل بعد olddefconfig لضمان عدم حدوث أي Override
-        sed -i 's/.*CONFIG_KSU.*/CONFIG_KSU=y/' $(pwd)/out/.config
-        sed -i 's/.*CONFIG_KSU_SUSFS.*/CONFIG_KSU_SUSFS=y/' $(pwd)/out/.config
+        # تأكيد التفعيل بعد olddefconfig
+        echo "CONFIG_KSU=y" >> $(pwd)/out/.config
+        echo "CONFIG_KERNELSU=y" >> $(pwd)/out/.config
+        echo "CONFIG_KSU_SUSFS=y" >> $(pwd)/out/.config
 
         make -C $(pwd) O=$(pwd)/out prepare
         make -C $(pwd) O=$(pwd)/out scripts
