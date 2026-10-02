@@ -1,4 +1,4 @@
-name: Build Kernel Samsung Wingtech A04 (Non-GKI 4.19 - ReSukiSU - SusFS Official)
+name: Build Kernel Samsung Wingtech A04 (Non-GKI 4.19 - ReSukiSU Only - No KPM)
 
 on:
   workflow_dispatch:
@@ -19,12 +19,11 @@ jobs:
           libncurses5-dev ccache make git zip wget xz-utils \
           device-tree-compiler libfdt-dev gcc-11-aarch64-linux-gnu gcc-11-arm-linux-gnueabi cpio patch
 
-    - name: Setup ReSukiSU, Official SusFS 4.19 & Apply Patches
+    - name: Setup ReSukiSU
       run: |
-        rm -rf drivers/kernelsu ReSukiSU susfs4ksu .git/modules/ReSukiSU .git/modules/susfs4ksu fs/ksu_compat.c
+        rm -rf drivers/kernelsu ReSukiSU .git/modules/ReSukiSU
         
         git clone -b main https://github.com/ReSukiSU/ReSukiSU.git ReSukiSU
-        git clone -b kernel-4.19 https://gitlab.com/simonpunk/susfs4ksu.git susfs4ksu
         
         python3 -c '
         import os, shutil
@@ -52,59 +51,6 @@ jobs:
                 shutil.rmtree("drivers/kernelsu")
 
         os.symlink(os.path.relpath(ksu_src, "drivers"), "drivers/kernelsu")
-
-        susfs_patches = "susfs4ksu/kernel_patches"
-        if os.path.exists(susfs_patches):
-            src_fs = os.path.join(susfs_patches, "fs")
-            if os.path.exists(src_fs):
-                for item in os.listdir(src_fs):
-                    s = os.path.join(src_fs, item)
-                    d = os.path.join("fs", item)
-                    if os.path.isdir(s):
-                        if os.path.exists(d): shutil.rmtree(d)
-                        shutil.copytree(s, d)
-                    else:
-                        shutil.copy2(s, d)
-
-            src_inc = os.path.join(susfs_patches, "include/linux")
-            if os.path.exists(src_inc):
-                os.makedirs("include/linux", exist_ok=True)
-                for item in os.listdir(src_inc):
-                    s = os.path.join(src_inc, item)
-                    d = os.path.join("include/linux", item)
-                    shutil.copy2(s, d)
-
-            ksu_patch_src = os.path.join(susfs_patches, "KernelSU/10_enable_susfs_for_ksu.patch")
-            if os.path.exists(ksu_patch_src):
-                shutil.copy2(ksu_patch_src, "drivers/kernelsu/")
-                os.system("cd drivers/kernelsu && patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true")
-
-            for p_file in os.listdir(susfs_patches):
-                if p_file.startswith("50_add_susfs_in_kernel") and "4.19" in p_file:
-                    shutil.copy2(os.path.join(susfs_patches, p_file), ".")
-                    os.system(f"patch -p1 --forward < {p_file} || true")
-                    break
-
-        compat_code = """
-        #include <linux/module.h>
-        #include <linux/types.h>
-        #include <linux/fs.h>
-        #include <linux/sched.h>
-        #include <linux/uaccess.h>
-
-        bool ksu_vfs_read_hook(struct file *file, char __user *buf, size_t count, loff_t *pos) { return false; }
-        int ksu_handle_vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos, ssize_t *ret) { return 0; }
-        bool ksu_execveat_hook(int *dfd, struct filename **filename, struct user_arg_ptr *argv, struct user_arg_ptr *envp, int *flags) { return false; }
-        int ksu_handle_execveat_sucompat(int *dfd, struct filename **filename, struct user_arg_ptr *argv, struct user_arg_ptr *envp, int *flags) { return 0; }
-        bool ksu_is_init_rc_hook_enabled(void) { return false; }
-        """
-        with open("fs/ksu_compat.c", "w") as f:
-            f.write(compat_code)
-
-        if os.path.exists("fs/Makefile"):
-            with open("fs/Makefile", "r") as f: f_content = f.read()
-            if "ksu_compat.o" not in f_content:
-                with open("fs/Makefile", "a") as f: f.write("\nobj-y += ksu_compat.o\n")
 
         ksu_mk = "ccflags-y += -w -I$(src) -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include -I$(objtree)/security/selinux\n_ksu_c_files := $(shell cd $(src) && find . -name \\\"*.c\\\" -not -path \\\"./.*\\\" -not -path \\\"*/tools/*\\\")\nobj-y += $(_ksu_c_files:.c=.o)\n"
         with open("drivers/kernelsu/Makefile", "w") as f:
@@ -225,14 +171,6 @@ jobs:
         echo "CONFIG_LTO=n" >> $(pwd)/out/.config
         echo "CONFIG_LTO_CLANG=n" >> $(pwd)/out/.config
         echo "CONFIG_THINLTO=n" >> $(pwd)/out/.config
-        
-        echo "CONFIG_KPM=y" >> $(pwd)/out/.config
-        echo "CONFIG_KSU_SUSFS=y" >> $(pwd)/out/.config
-        echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> $(pwd)/out/.config
-        echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $(pwd)/out/.config
-        echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> $(pwd)/out/.config
-        echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> $(pwd)/out/.config
-        echo "CONFIG_KSU_MANUAL_HOOK=y" >> $(pwd)/out/.config
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
@@ -249,10 +187,10 @@ jobs:
         cp out/arch/arm64/boot/dtb* AnyKernel3/ 2>/dev/null || true
         cp out/arch/arm64/boot/dtbo* AnyKernel3/ 2>/dev/null || true
         cd AnyKernel3
-        zip -r9 ../A04-ReSukiSU-SusFS-AnyKernel3.zip * -x .git README.md LICENSE
+        zip -r9 ../A04-ReSukiSU-NoKPM-AnyKernel3.zip * -x .git README.md LICENSE
 
     - name: Upload Kernel Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: A04-ReSukiSU-SusFS-Zip
-        path: A04-ReSukiSU-SusFS-AnyKernel3.zip
+        name: A04-ReSukiSU-NoKPM-Zip
+        path: A04-ReSukiSU-NoKPM-AnyKernel3.zip
