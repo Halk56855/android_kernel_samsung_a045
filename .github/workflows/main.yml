@@ -228,10 +228,10 @@ jobs:
 
     - name: Configure and Compile Kernel
       run: |
-        make -C $(pwd) O=$(pwd)/out rsuntk-a04_defconfig
+        make -C $(pwd) O=$(pwd)/out touchdirt-a04_defconfig
 
-        if [ -f "arch/arm64/configs/rsuntk.config" ]; then
-          python3 scripts/kconfig/merge_config.sh -O $(pwd)/out $(pwd)/out/.config arch/arm64/configs/rsuntk.config || true
+        if [ -f "arch/arm64/configs/touchdirt.config" ]; then
+          python3 scripts/kconfig/merge_config.sh -O $(pwd)/out $(pwd)/out/.config arch/arm64/configs/touchdirt.config || true
         fi
 
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config || true
