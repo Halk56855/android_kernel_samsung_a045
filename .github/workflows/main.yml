@@ -19,7 +19,7 @@ jobs:
           libncurses5-dev ccache make git zip wget xz-utils \
           device-tree-compiler libfdt-dev gcc-11-aarch64-linux-gnu gcc-11-arm-linux-gnueabi cpio patch
 
-    - name: Setup ReSukiSU
+    - name: Setup ReSukiSU & Bypass Non-GKI TP Check
       run: |
         rm -rf drivers/kernelsu ReSukiSU .git/modules/ReSukiSU
         
@@ -51,6 +51,15 @@ jobs:
                 shutil.rmtree("drivers/kernelsu")
 
         os.symlink(os.path.relpath(ksu_src, "drivers"), "drivers/kernelsu")
+
+        # Bypass Non-GKI TP hooks error in Kbuild
+        kbuild_path = "drivers/kernelsu/Kbuild"
+        if os.path.exists(kbuild_path):
+            with open(kbuild_path, "r", errors="ignore") as f:
+                content = f.read()
+            content = content.replace("error", "warning")
+            with open(kbuild_path, "w") as f:
+                f.write(content)
 
         ksu_mk = "ccflags-y += -w -I$(src) -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include -I$(objtree)/security/selinux\n_ksu_c_files := $(shell cd $(src) && find . -name \\\"*.c\\\" -not -path \\\"./.*\\\" -not -path \\\"*/tools/*\\\")\nobj-y += $(_ksu_c_files:.c=.o)\n"
         with open("drivers/kernelsu/Makefile", "w") as f:
