@@ -1,4 +1,4 @@
-name: Build Kernel Samsung Wingtech A04 (Non-GKI 4.19 - ReSukiSU - CPU & GPU 1000MHz - SusFS Official)
+name: Build Kernel Samsung Wingtech A04 (Non-GKI 4.19 - ReSukiSU - SusFS Official)
 
 on:
   workflow_dispatch:
@@ -135,48 +135,10 @@ jobs:
                 with open("drivers/Makefile", "a") as f: f.write("\nobj-y += kernelsu/\n")
         '
 
-    - name: Apply CPU, GPU 1000MHz Overclock & VDSO Fixes
+    - name: Apply VDSO Fixes Only
       run: |
         python3 -c '
         import os
-
-        for root, dirs, files in os.walk("."):
-            for f in files:
-                if f == "Makefile" or f.endswith(".mk"):
-                    fp = os.path.join(root, f)
-                    try:
-                        with open(fp, "r", errors="ignore") as fh: content = fh.read()
-                        if "-Os" in content:
-                            content = content.replace("-Os", "-O2")
-                            with open(fp, "w") as fh: fh.write(content)
-                    except:
-                        pass
-
-        gpu_map = {
-            "680000000": "1000000000",
-            "680000": "1000000",
-            "680MHz": "1000MHz",
-            "680mhz": "1000mhz",
-            "850000000": "1000000000",
-            "850000": "1000000",
-            "850MHz": "1000MHz",
-            "850mhz": "1000mhz"
-        }
-        for root, dirs, files in os.walk("."):
-            for f in files:
-                if f.endswith((".c", ".h", ".dts", ".dtsi", ".txt", ".cpp")):
-                    fp = os.path.join(root, f)
-                    try:
-                        with open(fp, "r", errors="ignore") as fh: content = fh.read()
-                        modified = False
-                        for old_k, new_v in gpu_map.items():
-                            if old_k in content:
-                                content = content.replace(old_k, new_v)
-                                modified = True
-                        if modified:
-                            with open(fp, "w") as fh: fh.write(content)
-                    except:
-                        pass
 
         vget_path = "arch/arm64/kernel/vdso/vgettimeofday.c"
         if os.path.exists(vget_path):
