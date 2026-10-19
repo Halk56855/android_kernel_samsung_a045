@@ -27,23 +27,6 @@ jobs:
         Curl() { curl "$@"; }
         Curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
-    - name: Add Compatibility for SUSFS Hooks
-      run: |
-        echo "[-] Adding compatibility symbols for SUSFS and KernelSU-Next..."
-        if [ -d "drivers/kernelsu" ]; then
-          cat << 'EOF' >> drivers/kernelsu/ksu_compat.c
-          #include <linux/types.h>
-          #include <linux/stddef.h>
-          bool ksu_is_init_rc_hook_enabled(void) {
-              return true;
-          }
-          int ksu_handle_devpts(void) {
-              return 0;
-          }
-EOF
-          echo "obj-y += ksu_compat.o" >> drivers/kernelsu/Makefile
-        fi
-
     - name: SUSFS
       run: |
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
@@ -96,67 +79,4 @@ EOF
         echo "STRIP=llvm-strip" >> $GITHUB_ENV
         echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
         echo "ARCH=arm64" >> $GITHUB_ENV
-        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
-        echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
-
-    - name: Configure and Compile Kernel
-      run: |
-        make -C $(pwd) O=$(pwd)/out touchdirt-a04_defconfig
-
-        if [ -f "arch/arm64/configs/touchdirt.config" ]; then
-          ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
-        fi
-
-        grep '^CONFIG_LOCALVERSION=' out/.config || true
-
-        sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
-
-        if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-KSU-Next-${{ inputs.version }}\"/" out/.config
-        elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.version }}" ]; then
-            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-KSU-Next-${{ inputs.version }}\"/" out/.config
-        else
-            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-KSU-Next-BETA\"/" out/.config
-        fi
-
-        make -C $(pwd) O=$(pwd)/out olddefconfig
-
-        echo "CONFIG_KSU=y" >> out/.config
-        echo "CONFIG_KSU_SUSFS=y" >> out/.config
-        make -C $(pwd) O=$(pwd)/out olddefconfig
-
-        make -C $(pwd) O=$(pwd)/out prepare
-        make -C $(pwd) O=$(pwd)/out scripts
-        make -C $(pwd) O=$(pwd)/out security/ || true
-
-        make -C $(pwd) O=$(pwd)/out -j$(nproc) || make -C $(pwd) O=$(pwd)/out -j1
-
-    - name: Get kernel version
-      id: version
-      run: |
-        if [ "${{ github.event_name }}" = "workflow_call" ]; then
-          VERSION="${{ inputs.version }}"
-        elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.version }}" ]; then
-          VERSION="${{ inputs.version }}"
-        else
-          VERSION="BETA"
-        fi
-        echo "VERSION=$VERSION"
-        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-    - name: Package AnyKernel3
-      run: |
-        DATE=$(date -u +"%Y-%m-%d")
-
-        git clone https://github.com/DaniTheSillyFem/AnyKernel3 --depth 1
-
-        cp out/arch/arm64/boot/Image AnyKernel3/Image
-
-        cd AnyKernel3
-        zip -r9 "../TouchDirt-KSU-Next-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
-
-    - name: Upload AnyKernel3 ZIP
-      uses: actions/upload-artifact@v4
-      with:
-        name: TouchDirt-KSU-Next-Enforcing
-        path: TouchDirt-*.zip
+        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security
