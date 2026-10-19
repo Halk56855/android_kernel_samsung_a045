@@ -24,6 +24,7 @@ jobs:
     - name: Integrating KernelSU-Next (Legacy)
       run: |
         echo "[-] Setting up KernelSU-Next..."
+        Curl() { curl "$@"; }
         Curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
     - name: SUSFS
@@ -103,7 +104,6 @@ jobs:
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
-        # فرض تفعيل خيارات KSU و SUSFS بعد olddefconfig لضمان عدم حذفها وربط الرموز بنجاح
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KSU_SUSFS=y" >> out/.config
         make -C $(pwd) O=$(pwd)/out olddefconfig
