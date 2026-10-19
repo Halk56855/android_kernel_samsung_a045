@@ -27,11 +27,23 @@ jobs:
         Curl() { curl "$@"; }
         Curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
-    - name: SUSFS
+    - name: SUSFS & Integration
       run: |
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
+        
+        # نسخ ملفات مصدر SUSFS إلى مجلد KernelSU لضمان توفر الدوال المطلوبة
+        if [ -d "SUSFS/kernel" ]; then
+          cp -rf SUSFS/kernel/* drivers/kernelsu/ || true
+        elif [ -d "SUSFS/fs" ]; then
+          cp -rf SUSFS/fs/* drivers/kernelsu/ || true
+        fi
+        
+        # التأكد من تضمين susfs.o في ملف بناء KernelSU
+        if [ -d "drivers/kernelsu" ] && ! grep -q "susfs.o" drivers/kernelsu/Makefile; then
+          echo "obj-y += susfs.o" >> drivers/kernelsu/Makefile
+        fi
 
     - name: Install build dependencies
       run: |
