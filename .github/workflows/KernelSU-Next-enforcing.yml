@@ -24,7 +24,7 @@ jobs:
     - name: Integrating KernelSU-Next (Legacy)
       run: |
         echo "[-] Setting up KernelSU-Next..."
-        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+        Curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
     - name: SUSFS
       run: |
@@ -89,10 +89,6 @@ jobs:
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
-        # تفعيل خيارات الكيرنل سيو والـ SUSFS لضمان ربط الرموز وعدم حدوث خطأ undefined symbol
-        echo "CONFIG_KSU=y" >> out/.config
-        echo "CONFIG_KSU_SUSFS=y" >> out/.config
-
         grep '^CONFIG_LOCALVERSION=' out/.config || true
 
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
@@ -105,6 +101,11 @@ jobs:
             sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-KSU-Next-BETA\"/" out/.config
         fi
 
+        make -C $(pwd) O=$(pwd)/out olddefconfig
+
+        # فرض تفعيل خيارات KSU و SUSFS بعد olddefconfig لضمان عدم حذفها وربط الرموز بنجاح
+        echo "CONFIG_KSU=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS=y" >> out/.config
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
         make -C $(pwd) O=$(pwd)/out prepare
