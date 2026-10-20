@@ -27,23 +27,11 @@ jobs:
         Curl() { curl "$@"; }
         Curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
-    - name: SUSFS & Integration
+    - name: SUSFS
       run: |
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
-        
-        # نسخ ملفات مصدر SUSFS إلى مجلد KernelSU لضمان توفر الدوال المطلوبة
-        if [ -d "SUSFS/kernel" ]; then
-          cp -rf SUSFS/kernel/* drivers/kernelsu/ || true
-        elif [ -d "SUSFS/fs" ]; then
-          cp -rf SUSFS/fs/* drivers/kernelsu/ || true
-        fi
-        
-        # التأكد من تضمين susfs.o في ملف بناء KernelSU
-        if [ -d "drivers/kernelsu" ] && ! grep -q "susfs.o" drivers/kernelsu/Makefile; then
-          echo "obj-y += susfs.o" >> drivers/kernelsu/Makefile
-        fi
 
     - name: Install build dependencies
       run: |
@@ -91,7 +79,8 @@ jobs:
         echo "STRIP=llvm-strip" >> $GITHUB_ENV
         echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
         echo "ARCH=arm64" >> $GITHUB_ENV
-        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
+        # إضافة تعريفات فارغة كخيار احتياطي لملفات الـ Linking لتجنب أخطاء الرموز المفقودة
+        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss -Dksu_is_init_rc_hook_enabled()=1 -Dksu_handle_devpts()=0" >> $GITHUB_ENV
         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
 
     - name: Configure and Compile Kernel
