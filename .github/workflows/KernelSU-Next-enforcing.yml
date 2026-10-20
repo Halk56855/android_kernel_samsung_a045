@@ -27,19 +27,25 @@ jobs:
         Curl() { curl "$@"; }
         Curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
-    - name: SUSFS & Compatibility Integration
+    - name: SUSFS & Compatibility Fix
       run: |
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
         
+        # حقن ملف التوافقية لضمان توفر رموز SUSFS المطلوبة دون تعديل ملفات السورس الأصلية
         if [ -d "drivers/kernelsu" ]; then
-          printf '#include <linux/types.h>\n' > drivers/kernelsu/ksu_compat.c
-          printf '#include <linux/jump_label.h>\n' >> drivers/kernelsu/ksu_compat.c
-          printf '#include <linux/fs.h>\n\n' >> drivers/kernelsu/ksu_compat.c
-          printf 'struct static_key_true ksu_is_init_rc_hook_enabled = STATIC_KEY_TRUE_INIT;\n\n' >> drivers/kernelsu/ksu_compat.c
-          printf 'int ksu_handle_devpts(struct inode *inode) {\n    return 0;\n}\n' >> drivers/kernelsu/ksu_compat.c
-          
+          cat << 'EOF' > drivers/kernelsu/ksu_compat.c
+#include <linux/types.h>
+#include <linux/jump_label.h>
+#include <linux/fs.h>
+
+struct static_key_true ksu_is_init_rc_hook_enabled = STATIC_KEY_TRUE_INIT;
+
+int ksu_handle_devpts(struct inode *inode) {
+    return 0;
+}
+EOF
           if ! grep -q "ksu_compat.o" drivers/kernelsu/Makefile; then
             echo "obj-y += ksu_compat.o" >> drivers/kernelsu/Makefile
           fi
