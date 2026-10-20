@@ -33,7 +33,6 @@ jobs:
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
         
-        # الحل الذكي: حقن ملف توافقية مستقل بذاته لتوفير الرموز المفقودة لـ SUSFS دون المساس بملفات النواة أو الكود الأصلي
         mkdir -p drivers/ksu_compat
         echo '#include <linux/types.h>' > drivers/ksu_compat/ksu_compat.c
         echo '#include <linux/jump_label.h>' >> drivers/ksu_compat/ksu_compat.c
@@ -43,7 +42,6 @@ jobs:
         
         echo 'obj-y += ksu_compat.o' > drivers/ksu_compat/Makefile
         
-        # ربط مجلد التوافقية بنظام البناء العام للنواة بأمان تام
         if ! grep -q "ksu_compat" drivers/Makefile; then
           echo 'obj-y += ksu_compat/' >> drivers/Makefile
         fi
@@ -119,8 +117,13 @@ jobs:
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
+        # فرض تفعيل خيارات KernelSU و Kprobes و Manual Hooks الأساسية لتجنب مشكلة عدم الاندماج
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KSU_SUSFS=y" >> out/.config
+        echo "CONFIG_KPROBES=y" >> out/.config
+        echo "CONFIG_HAVE_KPROBES=y" >> out/.config
+        echo "CONFIG_KSU_MANUAL_HOOK=y" >> out/.config
+        
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
         make -C $(pwd) O=$(pwd)/out prepare
