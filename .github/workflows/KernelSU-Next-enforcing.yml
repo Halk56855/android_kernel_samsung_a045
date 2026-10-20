@@ -27,26 +27,25 @@ jobs:
         Curl() { curl "$@"; }
         Curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
-    - name: SUSFS & Compatibility Fix
+    - name: SUSFS & Smart Compatibility Injection
       run: |
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
         
-        if [ -d "drivers/kernelsu" ]; then
-          echo '#include <linux/types.h>' > drivers/kernelsu/ksu_compat.c
-          echo '#include <linux/jump_label.h>' >> drivers/kernelsu/ksu_compat.c
-          echo '#include <linux/fs.h>' >> drivers/kernelsu/ksu_compat.c
-          echo '' >> drivers/kernelsu/ksu_compat.c
-          echo 'struct static_key_true ksu_is_init_rc_hook_enabled = STATIC_KEY_TRUE_INIT;' >> drivers/kernelsu/ksu_compat.c
-          echo '' >> drivers/kernelsu/ksu_compat.c
-          echo 'int ksu_handle_devpts(struct inode *inode) {' >> drivers/kernelsu/ksu_compat.c
-          echo '    return 0;' >> drivers/kernelsu/ksu_compat.c
-          echo '}' >> drivers/kernelsu/ksu_compat.c
-          
-          if ! grep -q "ksu_compat.o" drivers/kernelsu/Makefile; then
-            echo "obj-y += ksu_compat.o" >> drivers/kernelsu/Makefile
-          fi
+        # الحل الذكي: حقن ملف توافقية مستقل بذاته لتوفير الرموز المفقودة لـ SUSFS دون المساس بملفات النواة أو الكود الأصلي
+        mkdir -p drivers/ksu_compat
+        echo '#include <linux/types.h>' > drivers/ksu_compat/ksu_compat.c
+        echo '#include <linux/jump_label.h>' >> drivers/ksu_compat/ksu_compat.c
+        echo '#include <linux/fs.h>' >> drivers/ksu_compat/ksu_compat.c
+        echo 'struct static_key_true ksu_is_init_rc_hook_enabled = STATIC_KEY_TRUE_INIT;' >> drivers/ksu_compat/ksu_compat.c
+        echo 'int ksu_handle_devpts(struct inode *inode) { return 0; }' >> drivers/ksu_compat/ksu_compat.c
+        
+        echo 'obj-y += ksu_compat.o' > drivers/ksu_compat/Makefile
+        
+        # ربط مجلد التوافقية بنظام البناء العام للنواة بأمان تام
+        if ! grep -q "ksu_compat" drivers/Makefile; then
+          echo 'obj-y += ksu_compat/' >> drivers/Makefile
         fi
 
     - name: Install build dependencies
