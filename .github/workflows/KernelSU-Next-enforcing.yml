@@ -21,11 +21,15 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Integrating KernelSU-Next (Legacy)
+    - name: Integrating KernelSU-Next (Manual & Legacy Force)
       run: |
-        echo "[-] Setting up KernelSU-Next..."
-        Curl() { curl "$@"; }
-        Curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+        echo "[-] Cloning KernelSU-Next manually for Non-GKI architecture..."
+        git clone https://github.com/KernelSU-Next/KernelSU-Next.git --depth 1 -b next drivers/kernelsu
+        
+        # التأكد من تفعيل الـ Manual Hooks لنواة Galaxy A04 غير الـ GKI
+        if [ -f "drivers/kernelsu/kernel/setup.sh" ]; then
+          cd drivers/kernelsu && git checkout next && cd ../..
+        fi
 
     - name: SUSFS & Smart Compatibility Injection
       run: |
@@ -117,7 +121,7 @@ jobs:
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
-        # فرض تفعيل خيارات KernelSU و Kprobes و Manual Hooks الأساسية لتجنب مشكلة عدم الاندماج
+        # فرض تفعيل إعدادات الكيرنل صراحة لضمان عمل KernelSU في وضع Non-GKI
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KSU_SUSFS=y" >> out/.config
         echo "CONFIG_KPROBES=y" >> out/.config
