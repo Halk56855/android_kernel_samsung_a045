@@ -27,23 +27,29 @@ jobs:
         Curl() { curl "$@"; }
         Curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
-    - name: SUSFS & Compatibility Header
+    - name: SUSFS & Compatibility Integration
       run: |
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
         
-        # تحديث ملف التوافقية ليتوافق مع هيكلية static_branch التي يتطلبها SUSFS دون تعديل السورس الأصلي
-        cat << 'EOF' > ksu_compat.h
-        #ifndef KSU_COMPAT_H
-        #define KSU_COMPAT_H
-        #include <linux/types.h>
-        #include <linux/jump_label.h>
-        struct inode;
-        extern struct static_key_true ksu_is_init_rc_hook_enabled;
-        static inline int ksu_handle_devpts(struct inode *inode) { return 0; }
-        #endif
-        EOF
+        # إنشاء ملف تعريفات متوافق مع SUSFS داخل مجلد KernelSU دون المساس بالسورس الأصلي
+        if [ -d "drivers/kernelsu" ]; then
+          cat << 'EOF' > drivers/kernelsu/ksu_compat.c
+#include <linux/types.h>
+#include <linux/jump_label.h>
+#include <linux/fs.h>
+
+struct static_key_true ksu_is_init_rc_hook_enabled = STATIC_KEY_TRUE_INIT;
+
+int ksu_handle_devpts(struct inode *inode) {
+    return 0;
+}
+EOF
+          if ! grep -q "ksu_compat.o" drivers/kernelsu/Makefile; then
+            echo "obj-y += ksu_compat.o" >> drivers/kernelsu/Makefile
+          fi
+        fi
 
     - name: Install build dependencies
       run: |
@@ -91,7 +97,7 @@ jobs:
         echo "STRIP=llvm-strip" >> $GITHUB_ENV
         echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
         echo "ARCH=arm64" >> $GITHUB_ENV
-        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss -include $(pwd)/ksu_compat.h" >> $GITHUB_ENV
+        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
 
     - name: Configure and Compile Kernel
