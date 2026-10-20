@@ -27,11 +27,22 @@ jobs:
         Curl() { curl "$@"; }
         Curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
-    - name: SUSFS
+    - name: SUSFS & Compatibility Header
       run: |
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
+        
+        # إنشاء ملف توافقية لتعريف الدوال المطلوبة لـ SUSFS دون المساس بملفات السورس الأصلية
+        cat << 'EOF' > ksu_compat.h
+        #ifndef KSU_COMPAT_H
+        #define KSU_COMPAT_H
+        #include <linux/types.h>
+        struct inode;
+        static inline bool ksu_is_init_rc_hook_enabled(void) { return true; }
+        static inline int ksu_handle_devpts(struct inode *inode) { return 0; }
+        #endif
+        EOF
 
     - name: Install build dependencies
       run: |
@@ -79,8 +90,8 @@ jobs:
         echo "STRIP=llvm-strip" >> $GITHUB_ENV
         echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
         echo "ARCH=arm64" >> $GITHUB_ENV
-        # تعديل تعريف الـ Macro ليتقبل أي عدد من المتغيرات ويتجاوز الخطأ بنجاح
-        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss -Dksu_is_init_rc_hook_enabled\\(\\)=1 -Dksu_handle_devpts\\(...\\)=0" >> $GITHUB_ENV
+        # تضمين ملف التوافقية تلقائياً مع خيارات البناء لتجنب أخطاء الرموز
+        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss -include $(pwd)/ksu_compat.h" >> $GITHUB_ENV
         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
 
     - name: Configure and Compile Kernel
