@@ -33,19 +33,17 @@ jobs:
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
         
-        # حقن ملف التوافقية لضمان توفر رموز SUSFS المطلوبة دون تعديل ملفات السورس الأصلية
         if [ -d "drivers/kernelsu" ]; then
-          cat << 'EOF' > drivers/kernelsu/ksu_compat.c
-#include <linux/types.h>
-#include <linux/jump_label.h>
-#include <linux/fs.h>
-
-struct static_key_true ksu_is_init_rc_hook_enabled = STATIC_KEY_TRUE_INIT;
-
-int ksu_handle_devpts(struct inode *inode) {
-    return 0;
-}
-EOF
+          echo '#include <linux/types.h>' > drivers/kernelsu/ksu_compat.c
+          echo '#include <linux/jump_label.h>' >> drivers/kernelsu/ksu_compat.c
+          echo '#include <linux/fs.h>' >> drivers/kernelsu/ksu_compat.c
+          echo '' >> drivers/kernelsu/ksu_compat.c
+          echo 'struct static_key_true ksu_is_init_rc_hook_enabled = STATIC_KEY_TRUE_INIT;' >> drivers/kernelsu/ksu_compat.c
+          echo '' >> drivers/kernelsu/ksu_compat.c
+          echo 'int ksu_handle_devpts(struct inode *inode) {' >> drivers/kernelsu/ksu_compat.c
+          echo '    return 0;' >> drivers/kernelsu/ksu_compat.c
+          echo '}' >> drivers/kernelsu/ksu_compat.c
+          
           if ! grep -q "ksu_compat.o" drivers/kernelsu/Makefile; then
             echo "obj-y += ksu_compat.o" >> drivers/kernelsu/Makefile
           fi
