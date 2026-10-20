@@ -33,19 +33,13 @@ jobs:
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
         
-        # إنشاء ملف تعريفات متوافق مع SUSFS داخل مجلد KernelSU دون المساس بالسورس الأصلي
         if [ -d "drivers/kernelsu" ]; then
-          cat << 'EOF' > drivers/kernelsu/ksu_compat.c
-#include <linux/types.h>
-#include <linux/jump_label.h>
-#include <linux/fs.h>
-
-struct static_key_true ksu_is_init_rc_hook_enabled = STATIC_KEY_TRUE_INIT;
-
-int ksu_handle_devpts(struct inode *inode) {
-    return 0;
-}
-EOF
+          printf '#include <linux/types.h>\n' > drivers/kernelsu/ksu_compat.c
+          printf '#include <linux/jump_label.h>\n' >> drivers/kernelsu/ksu_compat.c
+          printf '#include <linux/fs.h>\n\n' >> drivers/kernelsu/ksu_compat.c
+          printf 'struct static_key_true ksu_is_init_rc_hook_enabled = STATIC_KEY_TRUE_INIT;\n\n' >> drivers/kernelsu/ksu_compat.c
+          printf 'int ksu_handle_devpts(struct inode *inode) {\n    return 0;\n}\n' >> drivers/kernelsu/ksu_compat.c
+          
           if ! grep -q "ksu_compat.o" drivers/kernelsu/Makefile; then
             echo "obj-y += ksu_compat.o" >> drivers/kernelsu/Makefile
           fi
