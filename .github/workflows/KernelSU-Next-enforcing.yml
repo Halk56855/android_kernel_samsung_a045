@@ -71,7 +71,7 @@ jobs:
         echo "CROSS_COMPILE=$GCC_PATH/aarch64-none-linux-gnu-" >> $GITHUB_ENV
         echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> $GITHUB_ENV
         echo "CC=clang" >> $GITHUB_ENV
-        echo "LD=ld.lld" >>$GITHUB_ENV
+        echo "LD=ld.lld" >> $GITHUB_ENV
         echo "AR=llvm-ar" >> $GITHUB_ENV
         echo "NM=llvm-nm" >> $GITHUB_ENV
         echo "OBJCOPY=llvm-objcopy" >> $GITHUB_ENV
@@ -79,8 +79,8 @@ jobs:
         echo "STRIP=llvm-strip" >> $GITHUB_ENV
         echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
         echo "ARCH=arm64" >> $GITHUB_ENV
-        # إضافة تعريفات الـ Macros لتجاوز مشكلة رموز SUSFS المفقودة دون تعديل ملفات السورس
-        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss -Dksu_is_init_rc_hook_enabled\\(\\)=1 -Dksu_handle_devpts\\(\\)=0" >> $GITHUB_ENV
+        # تعديل تعريف الـ Macro ليتقبل أي عدد من المتغيرات ويتجاوز الخطأ بنجاح
+        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss -Dksu_is_init_rc_hook_enabled\\(\\)=1 -Dksu_handle_devpts\\(...\\)=0" >> $GITHUB_ENV
         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
 
     - name: Configure and Compile Kernel
