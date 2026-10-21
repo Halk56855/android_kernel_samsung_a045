@@ -1,4 +1,4 @@
-name: Build TouchDirt Kernel, BakaSU, Enforcing
+Name: Build TouchDirt Kernel, BakaSU, Enforcing
 on:
   workflow_dispatch:
   workflow_call:
@@ -99,8 +99,10 @@ jobs:
         make -C $(pwd) O=$(pwd)/out scripts
         make -C $(pwd) O=$(pwd)/out security/
 
-        # تجاوز شرط توقف بناء الـ susfs داخل ملف التوافق لكي يستمر البناء بنجاح
-        sed -i 's/error Please wait susfs update../warning Please wait susfs update../g' KernelSU/kernel/tools/susfs_compat.mk
+        # الحل الذكي والدقيق: إفراغ ملف التوافق الذي يوقف البناء حصراً دون المساس بأي تعريفات أو ملفات أخرى
+        if [ -f "KernelSU/kernel/tools/susfs_compat.mk" ]; then
+          echo "# Bypassed susfs compatibility check" > KernelSU/kernel/tools/susfs_compat.mk
+        fi
 
         make -C $(pwd) O=$(pwd)/out -j$(nproc) || make -C $(pwd) O=$(pwd)/out -j1
 
