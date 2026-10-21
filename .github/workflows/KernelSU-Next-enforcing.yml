@@ -32,7 +32,7 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev libncursesw5-dev libglib2.0-dev libpixman-1-dev python3 libelf-dev clang lld llvm wget tar curl
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev libncursesw5-dev libglib2.0-dev libpixman-1-dev python3 libelf-dev clang lld llvm wget tar git
 
       - name: Setup Official ARM GNU Toolchain 14.2
         run: |
@@ -50,8 +50,11 @@ jobs:
 
       - name: Integrate KernelSU-Next (Legacy Mode)
         run: |
-          # تنزيل ودمج درايفر KernelSU-Next الخاص بـ Non-GKI/Legacy مباشرة في سورس النواة
-          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+          rm -rf KernelSU-Next
+          git clone https://github.com/rifsxd/KernelSU-Next -b v3.4.0-legacy KernelSU-Next
+          cd KernelSU-Next
+          bash setup.sh legacy
+          cd ..
 
       - name: Configure and Compile Kernel
         run: |
