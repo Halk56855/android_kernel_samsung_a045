@@ -38,7 +38,7 @@ jobs:
         sudo apt-get install -y \
           bc bison flex libssl-dev gcc g++ clang python3 \
           libncurses5-dev ccache make git zip wget xz-utils \
-          device-tree-compiler libfdt-dev gcc-arm-linux-gnueabi cpio
+          device-tree-compiler libfdt-dev gcc-arm-linux-gnueabi cpio jq
 
     - name: Prepare Toolchains directories
       run: |
@@ -114,19 +114,6 @@ jobs:
         echo "VERSION=$VERSION"
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-    - name: Package AnyKernel3
+    - name: Download FinaSU Manager APK
       run: |
-        DATE=$(date -u +"%Y-%m-%d")
-
-        git clone https://github.com/DaniTheSillyFem/AnyKernel3 --depth 1
-
-        cp out/arch/arm64/boot/Image AnyKernel3/Image
-
-        cd AnyKernel3
-        zip -r9 "../TouchDirt-FinaSU-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
-
-    - name: Upload AnyKernel3 ZIP
-      uses: actions/upload-artifact@v7.0.1
-      with:
-        name: TouchDirt-FinaSU-Enforcing
-        path: TouchDirt-*.zip
+        echo "[-] Downloading Fina
