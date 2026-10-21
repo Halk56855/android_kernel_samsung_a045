@@ -23,12 +23,12 @@ jobs:
 
     - name: Integrating KernelSU-Next & SUSFS Correctly
       run: |
-        echo "[-] Cleaning and setting up KernelSU-Next in drivers/kernelsu..."
+        echo "[-] Cleaning and setting up KernelSU-Next legacy branch..."
         rm -rf drivers/kernelsu
         mkdir -p drivers/kernelsu
         
-        # استنساخ KernelSU-Next مباشرة إلى المسار الصحيح للملفات
-        git clone https://github.com/KernelSU-Next/KernelSU-Next.git --depth 1 -b next drivers/kernelsu
+        # استنساخ فرع legacy المخصص للأنوية القديمة مثل 4.19
+        git clone https://github.com/KernelSU-Next/KernelSU-Next.git --depth 1 -b legacy drivers/kernelsu
 
         echo "[-] Cloning SUSFS patches..."
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
@@ -120,7 +120,7 @@ jobs:
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
-        # فرض تفعيل إعدادات KernelSU و SUSFS وجداول الرموز المطلوبة بدقة
+        # تفعيل إعدادات KernelSU و SUSFS وجداول الرموز المطلوبة بدقة
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KSU_NEXT=y" >> out/.config
         echo "CONFIG_KSU_SUSFS=y" >> out/.config
