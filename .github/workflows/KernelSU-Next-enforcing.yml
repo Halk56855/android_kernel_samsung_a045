@@ -21,15 +21,13 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Integrating KernelSU-Next (Manual & Legacy Force)
+    - name: Integrating KernelSU-Next (Smart & Safe)
       run: |
-        echo "[-] Cloning KernelSU-Next manually for Non-GKI architecture..."
+        echo "[-] Setting up KernelSU-Next for Non-GKI..."
+        if [ -d "drivers/kernelsu" ]; then
+          rm -rf drivers/kernelsu
+        }
         git clone https://github.com/KernelSU-Next/KernelSU-Next.git --depth 1 -b next drivers/kernelsu
-        
-        # التأكد من تفعيل الـ Manual Hooks لنواة Galaxy A04 غير الـ GKI
-        if [ -f "drivers/kernelsu/kernel/setup.sh" ]; then
-          cd drivers/kernelsu && git checkout next && cd ../..
-        fi
 
     - name: SUSFS & Smart Compatibility Injection
       run: |
@@ -121,7 +119,7 @@ jobs:
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
-        # فرض تفعيل إعدادات الكيرنل صراحة لضمان عمل KernelSU في وضع Non-GKI
+        # فرض تفعيل إعدادات الكيرنل صراحة لضمان عمل KernelSU و SUSFS في وضع Enforcing
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KSU_SUSFS=y" >> out/.config
         echo "CONFIG_KPROBES=y" >> out/.config
