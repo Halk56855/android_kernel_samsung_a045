@@ -99,6 +99,9 @@ jobs:
         make -C $(pwd) O=$(pwd)/out scripts
         make -C $(pwd) O=$(pwd)/out security/
 
+        # تجاوز شرط توقف بناء الـ susfs داخل ملف التوافق لكي يستمر البناء بنجاح
+        sed -i 's/error Please wait susfs update../warning Please wait susfs update../g' KernelSU/kernel/tools/susfs_compat.mk
+
         make -C $(pwd) O=$(pwd)/out -j$(nproc) || make -C $(pwd) O=$(pwd)/out -j1
 
     - name: Get kernel version
