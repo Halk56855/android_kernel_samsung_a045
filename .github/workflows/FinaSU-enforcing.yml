@@ -116,4 +116,30 @@ jobs:
 
     - name: Download FinaSU Manager APK
       run: |
-        echo "[-] Downloading Fina
+        echo "[-] Fetching FinaSU Manager APK release..."
+        LATEST_URL=$(curl -s https://api.github.com/repos/LyraVoid/FinaSU/releases/latest | jq -r '.assets[]? | select(.name | endswith(".apk")) | .browser_download_url' | head -n 1)
+        if [ -n "$LATEST_URL" ] && [ "$LATEST_URL" != "null" ]; then
+          echo "[-] Downloading APK from: $LATEST_URL"
+          wget -q "$LATEST_URL" -O FinaSU-Manager.apk
+        else
+          echo "[-] APK not found in latest release, skipping manager download."
+        fi
+
+    - name: Package AnyKernel3
+      run: |
+        DATE=$(date -u +"%Y-%m-%d")
+
+        git clone https://github.com/DaniTheSillyFem/AnyKernel3 --depth 1
+
+        cp out/arch/arm64/boot/Image AnyKernel3/Image
+
+        cd AnyKernel3
+        zip -r9 "../TouchDirt-FinaSU-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
+
+    - name: Upload Artifacts (ZIP & Manager APK)
+      uses: actions/upload-artifact@v7.0.1
+      with:
+        name: TouchDirt-FinaSU-Enforcing
+        path: |
+          TouchDirt-*.zip
+          FinaSU-Manager.apk
