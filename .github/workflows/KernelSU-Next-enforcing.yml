@@ -21,14 +21,16 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Integrating KernelSU-Next & SUSFS Patches
+    - name: Integrating KernelSU-Next & SUSFS Correctly
       run: |
-        echo "[-] Fixing Symbolic Link and setting up KernelSU-Next..."
+        echo "[-] Cleaning and setting up KernelSU-Next in drivers/kernelsu..."
         rm -rf drivers/kernelsu
         mkdir -p drivers/kernelsu
-        git clone https://github.com/KernelSU-Next/KernelSU-Next.git --depth 1 drivers/kernelsu
+        
+        # استنساخ KernelSU-Next مباشرة إلى المسار الصحيح للملفات
+        git clone https://github.com/KernelSU-Next/KernelSU-Next.git --depth 1 -b next drivers/kernelsu
 
-        echo "[-] Cloning SUSFS patches and applying them for v4.19..."
+        echo "[-] Cloning SUSFS patches..."
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
@@ -118,7 +120,7 @@ jobs:
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
-        # فرض تفعيل إعدادات KernelSU و SUSFS وجداول الرموز المطلوبة لـ 4.19 No-GKI
+        # فرض تفعيل إعدادات KernelSU و SUSFS وجداول الرموز المطلوبة بدقة
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KSU_NEXT=y" >> out/.config
         echo "CONFIG_KSU_SUSFS=y" >> out/.config
