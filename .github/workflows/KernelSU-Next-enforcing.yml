@@ -16,11 +16,11 @@ jobs:
       matrix:
         include:
           - target_system: "OneUI-6.1"
-            defconfig: "a045_oneui_defconfig"  # ضع اسم ملف defconfig الخاص بروم OneUI هنا
+            defconfig: "a045_oneui_defconfig"  # ضع اسم ملف defconfig الخاص بروم OneUI
             zip_name: "Kernel-KernelSU-OneUI6.1.zip"
           
           - target_system: "LineageOS-GSI"
-            defconfig: "a045_lineage_defconfig" # ضع اسم ملف defconfig الخاص بـ LineageOS/GSI هنا
+            defconfig: "a045_lineage_defconfig" # ضع اسم ملف defconfig الخاص بـ LineageOS/GSI
             zip_name: "Kernel-KernelSU-LineageOS-GSI.zip"
 
     steps:
@@ -32,7 +32,7 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev libncursesw5-dev libglib2.0-dev libpixman-1-dev python3 libelf-dev clang lld llvm wget tar
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev libncursesw5-dev libglib2.0-dev libpixman-1-dev python3 libelf-dev clang lld llvm wget tar curl
 
       - name: Setup Official ARM GNU Toolchain 14.2
         run: |
@@ -48,14 +48,10 @@ jobs:
           echo "Adding to PATH..."
           echo "$HOME/toolchain/bin" >> $GITHUB_PATH
 
-      - name: Integrate KernelSU-Next
+      - name: Integrate KernelSU-Next (Legacy Mode)
         run: |
-          if [ ! -d "KernelSU-Next" ]; then
-            git clone https://github.com/rifsxd/KernelSU-Next -b v3.4.0-legacy KernelSU-Next
-          fi
-          cd KernelSU-Next
-          bash setup.sh
-          cd ..
+          # تنزيل ودمج درايفر KernelSU-Next الخاص بـ Non-GKI/Legacy مباشرة في سورس النواة
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
       - name: Configure and Compile Kernel
         run: |
@@ -65,24 +61,26 @@ jobs:
           export CROSS_COMPILE=aarch64-none-linux-gnu-
           export CLANG_TRIPLE=aarch64-linux-gnu-
 
-          # 1. إعداد التهيئة الخاصة بالنظام المحدد في الماتريكس
+          # 1. تطبيق الـ defconfig الخاص بالروم المحدد
           make O=out ${{ matrix.defconfig }}
 
-          # 2. تفعيل خيارات KernelSU-Next و SUSFS في ملف الـ config
+          # 2. تفعيل الخيارات المطلوبة لـ KernelSU-Next و Kprobes و SUSFS
           scripts/config --file out/.config \
             -e CONFIG_KSU \
             -e CONFIG_KSU_NEXT \
             -e CONFIG_KSU_SUSFS \
             -e CONFIG_SU_SFS \
             -e CONFIG_SU_SFS_SUSFSMANAGER \
+            -e CONFIG_KPROBES \
+            -e CONFIG_HAVE_KPROBES \
+            -e CONFIG_KPROBE_EVENTS \
             -e CONFIG_KALLSYMS \
-            -e CONFIG_KALLSYMS_ALL \
-            -e CONFIG_KPROBES
+            -e CONFIG_KALLSYMS_ALL
 
-          # 3. تحديث الكنفغ بعد التعديل
+          # 3. تحديث الإعدادات
           make O=out olddefconfig
 
-          # 4. تجميع الكيرنل
+          # 4. بدء التجميع
           make -j$(nproc --all) O=out
 
       - name: Pack Kernel with AnyKernel3
