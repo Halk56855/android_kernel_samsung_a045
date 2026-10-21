@@ -1,4 +1,4 @@
-Name: Build TouchDirt Kernel, BakaSU, Enforcing
+name: Build TouchDirt Kernel, BakaSU, Enforcing
 on:
   workflow_dispatch:
   workflow_call:
