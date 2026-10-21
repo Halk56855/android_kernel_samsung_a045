@@ -18,13 +18,13 @@ jobs:
     - name: Integrating FinaSU
       run: |
         echo "[-] Cloning FinaSU repo..."
-        git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU[span_1](start_span)[span_1](end_span)
+        git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU
 
         echo "[-] Setup FinaSU..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
         rm -rf KernelSU
-        git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU[span_2](start_span)[span_2](end_span)
+        git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU
 
     - name: SUSFS
       run: |
