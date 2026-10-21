@@ -21,19 +21,19 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Integrating KernelSU-Next (Smart Symbolic Link Fix)
+    - name: Integrating KernelSU-Next & SUSFS Patches
       run: |
         echo "[-] Fixing Symbolic Link and setting up KernelSU-Next..."
         rm -rf drivers/kernelsu
         mkdir -p drivers/kernelsu
         git clone https://github.com/KernelSU-Next/KernelSU-Next.git --depth 1 drivers/kernelsu
 
-    - name: SUSFS & Smart Compatibility Injection
-      run: |
+        echo "[-] Cloning SUSFS patches and applying them for v4.19..."
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
-        
+
+        # حقن ملف التوافقية الذكي لرموز SUSFS المفقودة لتفادي أي أخطاء Linking
         mkdir -p drivers/ksu_compat
         echo '#include <linux/types.h>' > drivers/ksu_compat/ksu_compat.c
         echo '#include <linux/jump_label.h>' >> drivers/ksu_compat/ksu_compat.c
@@ -118,8 +118,14 @@ jobs:
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
+        # فرض تفعيل إعدادات KernelSU و SUSFS وجداول الرموز المطلوبة لـ 4.19 No-GKI
         echo "CONFIG_KSU=y" >> out/.config
+        echo "CONFIG_KSU_NEXT=y" >> out/.config
         echo "CONFIG_KSU_SUSFS=y" >> out/.config
+        echo "CONFIG_SU_SFS=y" >> out/.config
+        echo "CONFIG_SU_SFS_SUSFSMANAGER=y" >> out/.config
+        echo "CONFIG_KALLSYMS=y" >> out/.config
+        echo "CONFIG_KALLSYMS_ALL=y" >> out/.config
         echo "CONFIG_KPROBES=y" >> out/.config
         echo "CONFIG_HAVE_KPROBES=y" >> out/.config
         echo "CONFIG_KSU_MANUAL_HOOK=y" >> out/.config
