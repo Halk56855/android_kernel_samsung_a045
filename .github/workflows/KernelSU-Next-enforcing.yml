@@ -26,7 +26,7 @@ jobs:
         echo "[-] Setting up KernelSU-Next for Non-GKI..."
         if [ -d "drivers/kernelsu" ]; then
           rm -rf drivers/kernelsu
-        }
+        fi
         git clone https://github.com/KernelSU-Next/KernelSU-Next.git --depth 1 -b next drivers/kernelsu
 
     - name: SUSFS & Smart Compatibility Injection
@@ -119,7 +119,6 @@ jobs:
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
-        # فرض تفعيل إعدادات الكيرنل صراحة لضمان عمل KernelSU و SUSFS في وضع Enforcing
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KSU_SUSFS=y" >> out/.config
         echo "CONFIG_KPROBES=y" >> out/.config
