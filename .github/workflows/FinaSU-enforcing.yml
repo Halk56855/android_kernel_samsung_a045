@@ -26,14 +26,14 @@ jobs:
     - name: Integrating FinaSU with KPM support
       run: |
         echo "[-] Cloning FinaSU repo..."
-        git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU[span_3](start_span)[span_3](end_span)
+        git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU
 
         echo "[-] Setup FinaSU and KPM hooks..."
         chmod +x ./KernelSU/kernel/setup.sh
         export KSU_KPM_SUPPORT=y
         ./KernelSU/kernel/setup.sh
         rm -rf KernelSU
-        git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU[span_4](start_span)[span_4](end_span)
+        git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU
 
     - name: Install build dependencies
       run: |
