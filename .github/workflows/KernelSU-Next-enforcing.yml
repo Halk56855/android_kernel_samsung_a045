@@ -1,4 +1,4 @@
-name: Build Multi-Variant Kernels with KernelSU-Next
+.name: Build Multi-Variant Kernels with KernelSU-Next
 
 on:
   workflow_dispatch:
