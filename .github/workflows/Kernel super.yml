@@ -1,4 +1,4 @@
-name: Build TouchDirt Kernel with Coccinelle & KernelSU
+name: Build TouchDirt Kernel with SukiSU-Ultra
 
 on:
   workflow_dispatch:
@@ -27,16 +27,16 @@ jobs:
     - name: Checkout Source Code
       uses: actions/checkout@v4
 
-    - name: Integrate KernelSU (backslashxx)
+    - name: Integrate SukiSU-Ultra
       run: |
-        echo "[-] Cloning backslashxx KernelSU repository..."
-        git clone -b master https://github.com/backslashxx/KernelSU.git KernelSU
+        echo "[-] Cloning SukiSU-Ultra repository..."
+        git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
 
-        echo "[-] Setting up KernelSU..."
+        echo "[-] Setting up SukiSU-Ultra..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
         rm -rf KernelSU
-        git clone -b master https://github.com/backslashxx/KernelSU.git KernelSU
+        git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
 
     - name: Install Coccinelle & Build Dependencies
       run: |
@@ -53,7 +53,6 @@ jobs:
         git clone https://github.com/devnoname120/kernelsu-coccinelle.git coccinelle-patches
 
         echo "[-] Applying semantic patches via Coccinelle..."
-        # Applying classic-hooks / scope-minimized-hooks using spatch
         for patch in coccinelle-patches/scope-minimized-hooks/*.cocci; do
           if [ -f "$patch" ]; then
             echo "Applying patch: $patch"
@@ -124,7 +123,7 @@ jobs:
           VERSION_VAL="BETA"
         fi
 
-        sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-Coccinelle-${VERSION_VAL}\"/" out/.config
+        sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-SukiSU-Ultra-${VERSION_VAL}\"/" out/.config
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
         make -C $(pwd) O=$(pwd)/out prepare
@@ -146,10 +145,10 @@ jobs:
         cp out/arch/arm64/boot/Image AnyKernel3/Image
 
         cd AnyKernel3
-        zip -r9 "../TouchDirt-KernelSU-Coccinelle-${{ matrix.defconfig }}-${VERSION_VAL}-${DATE}.zip" . -x ".git/*"
+        zip -r9 "../TouchDirt-SukiSU-Ultra-${{ matrix.defconfig }}-${VERSION_VAL}-${DATE}.zip" . -x ".git/*"
 
     - name: Upload Kernel Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: TouchDirt-Coccinelle-${{ matrix.defconfig }}
+        name: TouchDirt-SukiSU-Ultra-${{ matrix.defconfig }}
         path: TouchDirt-*.zip
