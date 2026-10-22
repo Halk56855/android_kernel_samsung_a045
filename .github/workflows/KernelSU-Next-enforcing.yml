@@ -71,7 +71,7 @@ jobs:
           rm -rf KernelSU-Next
           git clone https://github.com/KernelSU-Next/KernelSU-Next.git --depth=1 -b v3.4.0-legacy KernelSU-Next
           
-          # تشغيل سكربت الدمج لتطبيق الـ Hooks على سورس النواة
+          # تشغيل سكربت الدمج لتطبيق الـ Hooks الخاصة بـ KernelSU-Next على سورس النواة
           bash KernelSU-Next/kernel/setup.sh legacy
           
           # نقل مجلد الكود البرمجي لـ KernelSU مباشرة إلى مسار الـ drivers لضمان تجميعه
@@ -115,13 +115,10 @@ jobs:
             -d CONFIG_CC_WERROR \
             -d CONFIG_IKHEADERS
 
-          # 4. تفعيل خيارات KernelSU-Next و SUSFS و Kprobes إجبارياً
+          # 4. تفعيل خيارات KernelSU-Next و Kprobes إجبارياً (بدون SUSFS أو KPM)
           scripts/config --file out/.config \
             -e CONFIG_KSU \
             -e CONFIG_KSU_NEXT \
-            -e CONFIG_KSU_SUSFS \
-            -e CONFIG_SU_SFS \
-            -e CONFIG_SU_SFS_SUSFSMANAGER \
             -e CONFIG_KPROBES \
             -e CONFIG_HAVE_KPROBES \
             -e CONFIG_KPROBE_EVENTS \
@@ -131,12 +128,9 @@ jobs:
           # 5. تحديث الإعدادات والتوافقية
           make O=out olddefconfig
 
-          # 6. فرض قيم الـ Built-in مباشرة في ملف out/.config لمنع تحويلها إلى موديولات أو حذفها
+          # 6. فرض قيم الـ Built-in مباشرة لـ KernelSU لمنع أي تلاعب
           echo "CONFIG_KSU=y" >> out/.config
           echo "CONFIG_KSU_NEXT=y" >> out/.config
-          echo "CONFIG_KSU_SUSFS=y" >> out/.config
-          echo "CONFIG_SU_SFS=y" >> out/.config
-          echo "CONFIG_SU_SFS_SUSFSMANAGER=y" >> out/.config
 
           # 7. تحديث نهائي للتوافقية بعد الحقن المباشر
           make O=out olddefconfig
