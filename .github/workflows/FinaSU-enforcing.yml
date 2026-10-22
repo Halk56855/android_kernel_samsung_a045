@@ -1,4 +1,4 @@
-name: Build TouchDirt Kernel, FinaSU, Enforcing
+name: Build All Kernel Variants, FinaSU, KPM Enforcing
 on:
   workflow_dispatch:
   workflow_call:
@@ -10,27 +10,31 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        config: 
+          - touchdirt-a04_defconfig
+          - a04_defconfig
+          - rsuntk-a04_defconfig
+          - stock/a04-stock_defconfig
 
     steps:
     - name: Checkout source
       uses: actions/checkout@v7.0.1
 
-    - name: Integrating FinaSU
+    - name: Integrating FinaSU with KPM support
       run: |
         echo "[-] Cloning FinaSU repo..."
-        git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU
+        git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU[span_3](start_span)[span_3](end_span)
 
-        echo "[-] Setup FinaSU..."
+        echo "[-] Setup FinaSU and KPM hooks..."
         chmod +x ./KernelSU/kernel/setup.sh
+        # تفعيل خيارات KPM المدمجة في FinaSU
+        export KSU_KPM_SUPPORT=y
         ./KernelSU/kernel/setup.sh
         rm -rf KernelSU
-        git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU
-
-    - name: SUSFS
-      run: |
-        git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
-        chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
-        ./SUSFS/Patches/susfs_inline_hook_patches.sh
+        git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU[span_4](start_span)[span_4](end_span)
 
     - name: Install build dependencies
       run: |
@@ -81,22 +85,17 @@ jobs:
         echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
 
-    - name: Configure and Compile Kernel
+    - name: Configure and Compile Kernel for ${{ matrix.config }}
       run: |
-        make -C $(pwd) O=$(pwd)/out touchdirt-a04_defconfig
-
-        if [ -f "arch/arm64/configs/touchdirt.config" ]; then
-          ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
-        fi
-
-        grep '^CONFIG_LOCALVERSION=' out/.config
+        echo "Building with config: ${{ matrix.config }}"
+        make -C $(pwd) O=$(pwd)/out ${{ matrix.config }}
 
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
 
         if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-FinaSU-${{ inputs.version }}\"/" out/.config
+            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-FinaSU-KPM-${{ inputs.version }}\"/" out/.config
         else
-            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-FinaSU-BETA\"/" out/.config
+            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-FinaSU-KPM-BETA\"/" out/.config
         fi
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
@@ -111,6 +110,7 @@ jobs:
       id: version
       run: |
         VERSION="${{ inputs.version }}"
+        if [ -z "$VERSION" ]; then VERSION="BETA"; fi
         echo "VERSION=$VERSION"
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -128,18 +128,19 @@ jobs:
     - name: Package AnyKernel3
       run: |
         DATE=$(date -u +"%Y-%m-%d")
+        CONFIG_NAME=$(basename ${{ matrix.config }} _defconfig)
 
         git clone https://github.com/DaniTheSillyFem/AnyKernel3 --depth 1
 
         cp out/arch/arm64/boot/Image AnyKernel3/Image
 
         cd AnyKernel3
-        zip -r9 "../TouchDirt-FinaSU-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
+        zip -r9 "../FinaSU-${CONFIG_NAME}-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
 
-    - name: Upload Artifacts (ZIP & Manager APK)
+    - name: Upload Artifacts
       uses: actions/upload-artifact@v7.0.1
       with:
-        name: TouchDirt-FinaSU-Enforcing
+        name: FinaSU-Kernel-${{ matrix.config }}
         path: |
-          TouchDirt-*.zip
+          FinaSU-*.zip
           FinaSU-Manager.apk
