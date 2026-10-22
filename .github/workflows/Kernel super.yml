@@ -1,4 +1,4 @@
-name: Build TouchDirt Kernel (All Defconfigs)
+name: Build TouchDirt Kernel with Coccinelle & KernelSU
 
 on:
   workflow_dispatch:
@@ -38,19 +38,34 @@ jobs:
         rm -rf KernelSU
         git clone -b master https://github.com/backslashxx/KernelSU.git KernelSU
 
-    - name: Apply SUSFS Patches
-      run: |
-        git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
-        chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
-        ./SUSFS/Patches/susfs_inline_hook_patches.sh || true
-
-    - name: Install Build Dependencies
+    - name: Install Coccinelle & Build Dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
           bc bison flex libssl-dev gcc g++ clang python3 \
           libncurses5-dev ccache make git zip wget xz-utils \
-          device-tree-compiler libfdt-dev gcc-arm-linux-gnueabi cpio
+          device-tree-compiler libfdt-dev gcc-arm-linux-gnueabi cpio \
+          coccinelle
+
+    - name: Apply KernelSU Coccinelle Patches
+      run: |
+        echo "[-] Cloning kernelsu-coccinelle repository..."
+        git clone https://github.com/devnoname120/kernelsu-coccinelle.git coccinelle-patches
+
+        echo "[-] Applying semantic patches via Coccinelle..."
+        # Applying classic-hooks / scope-minimized-hooks using spatch
+        for patch in coccinelle-patches/scope-minimized-hooks/*.cocci; do
+          if [ -f "$patch" ]; then
+            echo "Applying patch: $patch"
+            spatch --sp-file "$patch" --in-place --dir . || true
+          fi
+        done
+
+    - name: Apply SUSFS Patches
+      run: |
+        git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
+        chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
+        ./SUSFS/Patches/susfs_inline_hook_patches.sh || true
 
     - name: Prepare Toolchains Directories
       run: |
@@ -109,7 +124,7 @@ jobs:
           VERSION_VAL="BETA"
         fi
 
-        sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-KSU-${VERSION_VAL}\"/" out/.config
+        sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-Coccinelle-${VERSION_VAL}\"/" out/.config
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
         make -C $(pwd) O=$(pwd)/out prepare
@@ -131,10 +146,10 @@ jobs:
         cp out/arch/arm64/boot/Image AnyKernel3/Image
 
         cd AnyKernel3
-        zip -r9 "../TouchDirt-KernelSU-${{ matrix.defconfig }}-${VERSION_VAL}-${DATE}.zip" . -x ".git/*"
+        zip -r9 "../TouchDirt-KernelSU-Coccinelle-${{ matrix.defconfig }}-${VERSION_VAL}-${DATE}.zip" . -x ".git/*"
 
     - name: Upload Kernel Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: TouchDirt-KernelSU-${{ matrix.defconfig }}
+        name: TouchDirt-Coccinelle-${{ matrix.defconfig }}
         path: TouchDirt-*.zip
