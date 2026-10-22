@@ -30,7 +30,6 @@ jobs:
 
         echo "[-] Setup FinaSU and KPM hooks..."
         chmod +x ./KernelSU/kernel/setup.sh
-        # تفعيل خيارات KPM المدمجة في FinaSU
         export KSU_KPM_SUPPORT=y
         ./KernelSU/kernel/setup.sh
         rm -rf KernelSU
@@ -128,7 +127,7 @@ jobs:
     - name: Package AnyKernel3
       run: |
         DATE=$(date -u +"%Y-%m-%d")
-        CONFIG_NAME=$(basename ${{ matrix.config }} _defconfig)
+        CONFIG_NAME=$(basename ${{ matrix.config }} _defconfig | tr '/' '-')
 
         git clone https://github.com/DaniTheSillyFem/AnyKernel3 --depth 1
 
