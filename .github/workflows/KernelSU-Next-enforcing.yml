@@ -48,14 +48,19 @@ jobs:
           echo "Adding to PATH..."
           echo "$HOME/toolchain/bin" >> $GITHUB_PATH
 
-      - name: Integrate KernelSU-Next (Run Setup from Kernel Folder)
+      - name: Integrate KernelSU-Next (Correct Execution Path)
         run: |
           rm -rf KernelSU-Next
+          # 1. سحب المستودع الرسمي للفرع المطلوب
           git clone https://github.com/KernelSU-Next/KernelSU-Next.git --depth=1 -b v3.4.0-legacy KernelSU-Next
+          
+          # 2. تشغيل السكريبت مع تحديد مساره الصحيح (kernel/setup.sh) وأنت في المجلد الرئيسي للنواة
           cd KernelSU-Next
-          # تشغيل سكريبت الإعداد من داخل مجلد kernel بوضع الـ legacy
-          bash kernel/setup.sh legacy
-          cd ..
+          # الانتقال لمجلد kernel حيث يوجد setup.sh وحفظ المسار أو تشغيله مباشرة
+          cd kernel
+          bash setup.sh legacy
+          # العودة للمجلد الرئيسي للكيرنل
+          cd ../..
 
       - name: Configure and Compile Kernel
         run: |
