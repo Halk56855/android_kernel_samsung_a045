@@ -71,6 +71,13 @@ jobs:
           rm -rf KernelSU-Next
           git clone https://github.com/KernelSU-Next/KernelSU-Next.git --depth=1 -b v3.4.0-legacy KernelSU-Next
           bash KernelSU-Next/kernel/setup.sh legacy
+          
+          # التأكد من ربط تجميع مجلد kernelsu ضمن نظام بناء الـ drivers بالنواة
+          if [ -d "drivers/kernelsu" ]; then
+            if ! grep -q "kernelsu" drivers/Makefile; then
+              echo "obj-y += kernelsu/" >> drivers/Makefile
+            fi
+          fi
 
       - name: Configure and Compile Kernel
         run: |
@@ -80,7 +87,7 @@ jobs:
           export CROSS_COMPILE=aarch64-none-linux-gnu-
           export CLANG_TRIPLE=aarch64-linux-gnu-
 
-          # 1. تطبيق ملف الdefconfig الأساسي أولاً بكل حال من الأحوال
+          # 1. تطبيق ملف الـ defconfig الأساسي أولاً
           make O=out ${{ matrix.defconfig }}
 
           # 2. دمج ملف الإعدادات الجزئي الإضافي بأمان إذا كان موجوداً
@@ -98,7 +105,7 @@ jobs:
             -d CONFIG_CC_WERROR \
             -d CONFIG_IKHEADERS
 
-          # 4. تفعيل خيارات KernelSU-Next و SUSFS و Kprobes إجبارياً لضمان عمل الروت
+          # 4. تفعيل خيارات KernelSU-Next و SUSFS و Kprobes إجبارياً
           scripts/config --file out/.config \
             -e CONFIG_KSU \
             -e CONFIG_KSU_NEXT \
