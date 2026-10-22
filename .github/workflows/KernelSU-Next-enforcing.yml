@@ -66,28 +66,9 @@ jobs:
           echo "Adding to PATH..."
           echo "$HOME/toolchain/bin" >> $GITHUB_PATH
 
-      - name: Integrate KernelSU-Next (Legacy Branch)
+      - name: Integrate KernelSU-Next (Official Setup Script)
         run: |
-          rm -rf KernelSU-Next
-          git clone https://github.com/KernelSU-Next/KernelSU-Next.git --depth=1 -b v3.4.0-legacy KernelSU-Next
-          
-          # تشغيل سكربت الدمج لتطبيق الـ Hooks الخاصة بـ KernelSU-Next على سورس النواة
-          bash KernelSU-Next/kernel/setup.sh legacy
-          
-          # نقل مجلد الكود البرمجي لـ KernelSU مباشرة إلى مسار الـ drivers لضمان تجميعه
-          rm -rf drivers/kernelsu
-          cp -r KernelSU-Next/kernel drivers/kernelsu
-          
-          # ربط الملفات في Kconfig و Makefile الخاص بالـ drivers
-          if [ -f "drivers/kernelsu/Kconfig" ]; then
-            if ! grep -q "kernelsu/Kconfig" drivers/Kconfig; then
-              echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
-            fi
-          fi
-          
-          if ! grep -q "kernelsu" drivers/Makefile; then
-            echo "obj-y += kernelsu/" >> drivers/Makefile
-          fi
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
       - name: Configure and Compile Kernel
         run: |
@@ -115,7 +96,7 @@ jobs:
             -d CONFIG_CC_WERROR \
             -d CONFIG_IKHEADERS
 
-          # 4. تفعيل خيارات KernelSU-Next و Kprobes إجبارياً (بدون SUSFS أو KPM)
+          # 4. تفعيل خيارات KernelSU-Next و Kprobes إجبارياً
           scripts/config --file out/.config \
             -e CONFIG_KSU \
             -e CONFIG_KSU_NEXT \
@@ -128,7 +109,7 @@ jobs:
           # 5. تحديث الإعدادات والتوافقية
           make O=out olddefconfig
 
-          # 6. فرض قيم الـ Built-in مباشرة لـ KernelSU لمنع أي تلاعب
+          # 6. فرض قيم الـ Built-in مباشرة لـ KernelSU لمنع أي تلاعب أو حذف
           echo "CONFIG_KSU=y" >> out/.config
           echo "CONFIG_KSU_NEXT=y" >> out/.config
 
