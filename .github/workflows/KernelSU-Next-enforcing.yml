@@ -1,4 +1,4 @@
-name: Build Dual Kernels (OneUI 6.1 & LineageOS) with KernelSU-Next
+name: Build Multi-Variant Kernels with KernelSU-Next
 
 on:
   workflow_dispatch:
@@ -16,12 +16,28 @@ jobs:
       matrix:
         include:
           - target_system: "OneUI-6.1"
-            defconfig: "a045_oneui_defconfig"  # ضع اسم ملف defconfig الخاص بروم OneUI
+            defconfig: "a04_defconfig"
             zip_name: "Kernel-KernelSU-OneUI6.1.zip"
           
           - target_system: "LineageOS-GSI"
-            defconfig: "a045_lineage_defconfig" # ضع اسم ملف defconfig الخاص بـ LineageOS/GSI
+            defconfig: "a04_00_defconfig"
             zip_name: "Kernel-KernelSU-LineageOS-GSI.zip"
+
+          - target_system: "Rsuntk-A04"
+            defconfig: "rsuntk-a04_defconfig"
+            zip_name: "Kernel-KernelSU-Rsuntk-A04.zip"
+
+          - target_system: "TouchDirt-A04"
+            defconfig: "touchdirt-a04_defconfig"
+            zip_name: "Kernel-KernelSU-TouchDirt-A04.zip"
+
+          - target_system: "TouchDirt-Permissive"
+            defconfig: "touchdirt-permissive-config"
+            zip_name: "Kernel-KernelSU-TouchDirt-Permissive.zip"
+
+          - target_system: "TouchDirt-Config"
+            defconfig: "touchdirt.config"
+            zip_name: "Kernel-KernelSU-TouchDirt-Config.zip"
 
     steps:
       - name: Checkout Kernel Source
@@ -48,13 +64,10 @@ jobs:
           echo "Adding to PATH..."
           echo "$HOME/toolchain/bin" >> $GITHUB_PATH
 
-      - name: Integrate KernelSU-Next (Run from Kernel Root)
+      - name: Integrate KernelSU-Next (Legacy Branch)
         run: |
           rm -rf KernelSU-Next
-          # 1. سحب المستودع الرسمي بالفرع المطلوب
           git clone https://github.com/KernelSU-Next/KernelSU-Next.git --depth=1 -b v3.4.0-legacy KernelSU-Next
-          
-          # 2. تشغيل السكريبت من الجذر الأساسي للنواة حتى يتمكن من العثور على مجلد drivers/
           bash KernelSU-Next/kernel/setup.sh legacy
 
       - name: Configure and Compile Kernel
@@ -65,10 +78,10 @@ jobs:
           export CROSS_COMPILE=aarch64-none-linux-gnu-
           export CLANG_TRIPLE=aarch64-linux-gnu-
 
-          # 1. تطبيق الـ defconfig الخاص بالروم المحدد
+          # 1. تطبيق ملف الـ defconfig أو الـ config الخاص بكل متغير في المصفوفة
           make O=out ${{ matrix.defconfig }}
 
-          # 2. تفعيل الخيارات المطلوبة لـ KernelSU-Next و Kprobes و SUSFS
+          # 2. تفعيل خيارات KernelSU-Next و SUSFS و Kprobes إجبارياً لضمان عمل الروت
           scripts/config --file out/.config \
             -e CONFIG_KSU \
             -e CONFIG_KSU_NEXT \
@@ -81,10 +94,10 @@ jobs:
             -e CONFIG_KALLSYMS \
             -e CONFIG_KALLSYMS_ALL
 
-          # 3. تحديث الإعدادات
+          # 3. تحديث الإعدادات والتوافقية
           make O=out olddefconfig
 
-          # 4. بدء التجميع
+          # 4. بدء تجميع النواة باستخدام جميع أنوية المعالج المتاحة
           make -j$(nproc --all) O=out
 
       - name: Pack Kernel with AnyKernel3
