@@ -48,14 +48,15 @@ jobs:
           echo "Adding to PATH..."
           echo "$HOME/toolchain/bin" >> $GITHUB_PATH
 
-      - name: Integrate KernelSU-Next (Fetch Specific Tag)
+      - name: Integrate KernelSU-Next (Fetch Tags & Checkout)
         run: |
           rm -rf KernelSU-Next
-          # استنساخ المستودع بدون فروع محددة
           git clone https://github.com/rifsxd/KernelSU-Next.git KernelSU-Next
           cd KernelSU-Next
-          # التحويل الفعلي للـ Tag المطلوب v3.4.0-legacy
-          git checkout tags/v3.4.0-legacy
+          # جلب جميع الوسوم من المستودع لتجنب خطأ عدم المطابقة
+          git fetch --tags
+          # التحويل إلى الـ Tag المطلوب بنجاح
+          git checkout v3.4.0-legacy
           # تشغيل سكريبت الإعداد بوضع الـ legacy
           bash setup.sh legacy
           cd ..
