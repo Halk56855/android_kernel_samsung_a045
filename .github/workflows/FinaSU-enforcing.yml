@@ -1,145 +1,145 @@
-name: Build All Kernel Variants, FinaSU, KPM Enforcing
+name: Autonomous AI Kernel Build & Fixer
+
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
-  workflow_call:
-    inputs:
-      version:
-        required: true
-        type: string
 
 jobs:
-  build:
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        config: 
-          - touchdirt-a04_defconfig
-          - a04_defconfig
-          - rsuntk-a04_defconfig
-          - stock/a04-stock_defconfig
+  build-and-autofix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # للسماح للذكاء الاصطناعي بعمل Commit والتعديل التلقائي
 
     steps:
-    - name: Checkout source
-      uses: actions/checkout@v7.0.1
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
 
-    - name: Integrating FinaSU with KPM support
-      run: |
-        echo "[-] Cloning FinaSU repo..."
-        git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU
+      - name: Setup Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev git wget ccache zip python3 python3-pip
+          pip3 install openai
 
-        echo "[-] Setup FinaSU and KPM hooks..."
-        chmod +x ./KernelSU/kernel/setup.sh
-        export KSU_KPM_SUPPORT=y
-        ./KernelSU/kernel/setup.sh
-        rm -rf KernelSU
-        git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU
+      - name: Setup Android Clang & GCC Toolchain
+        run: |
+          mkdir -p toolchain
+          cd toolchain
+          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-release/clang-r416183b.tar.gz -O clang.tar.gz
+          mkdir clang && tar -xf clang.tar.gz -C clang
+          wget -q https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android12-release.tar.gz -O gcc.tar.gz
+          mkdir gcc && tar -xf gcc.tar.gz -C gcc
 
-    - name: Install build dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          bc bison flex libssl-dev gcc g++ clang python3 \
-          libncurses5-dev ccache make git zip wget xz-utils \
-          device-tree-compiler libfdt-dev gcc-arm-linux-gnueabi cpio jq
+      - name: Integrate FinaSU Source
+        run: |
+          if [ ! -d "finasu-src" ]; then
+            git clone https://github.com/LyraVoid/FinaSU.git finasu-src[span_0](start_span)[span_0](end_span)
+          fi
 
-    - name: Prepare Toolchains directories
-      run: |
-        mkdir -p toolchain/gcc
-        mkdir -p toolchain/clang
+      - name: Attempt Kernel Compilation
+        id: compile
+        continue-on-error: true
+        run: |
+          export PATH=$GITHUB_WORKSPACE/toolchain/clang/bin:$GITHUB_WORKSPACE/toolchain/gcc/bin:$PATH
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-android-
+          export CC=clang
+          
+          make O=out a04_defconfig
+          make -j$(nproc) O=out 2>&1 | tee build_error.log
 
-    - name: Download GCC & Clang Toolchain
-      run: |
-        cd toolchain/gcc
-        wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
-          https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz || \
-        wget -q --show-progress \
-          https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
-        tar -xf gcc.tar.xz -C ./
+      - name: AI Auto-Fix (Runs Automatically on Failure without Prompts)
+        if: steps.compile.outcome == 'failure'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python3 - << 'EOF'
+          import os
+          import re
+          import openai
 
-        cd ../clang
-        wget -q --show-progress \
-          https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/clang-r383902.tar.gz -O clang.tar.gz
-        mkdir -p host/linux-x86/clang-r383902
-        tar -xzf clang.tar.gz -C host/linux-x86/clang-r383902
+          api_key = os.getenv("OPENAI_API_KEY")
+          if not api_key:
+              print("❌ لم يتم العثور على OPENAI_API_KEY. يرجى إضافته في Repository Secrets.")
+              exit(1)
 
-    - name: Set Environment Variables
-      run: |
-        CLANG_PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r383902/bin"
-        GCC_PATH="$(pwd)/toolchain/gcc/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu/bin"
+          client = openai.OpenAI(api_key=api_key)
 
-        echo "$CLANG_PATH" >> $GITHUB_PATH
+          # قراءة سجل الأخطاء
+          with open("build_error.log", "r") as f:
+              logs = f.read()
 
-        echo "CROSS_COMPILE=$GCC_PATH/aarch64-none-linux-gnu-" >> $GITHUB_ENV
-        echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> $GITHUB_ENV
-        echo "CC=clang" >> $GITHUB_ENV
-        echo "LD=ld.lld" >> $GITHUB_ENV
-        echo "AR=llvm-ar" >> $GITHUB_ENV
-        echo "NM=llvm-nm" >> $GITHUB_ENV
-        echo "OBJCOPY=llvm-objcopy" >> $GITHUB_ENV
-        echo "OBJDUMP=llvm-objdump" >> $GITHUB_ENV
-        echo "STRIP=llvm-strip" >> $GITHUB_ENV
-        echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
-        echo "ARCH=arm64" >> $GITHUB_ENV
-        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
-        echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
+          # استخراج اسم الملف المصدر المسبب للخطأ
+          matches = re.findall(r'([a-zA-Z0-9_\-\/]+\.[c|h]):(\d+):\d+: error:', logs)
+          
+          if matches:
+              file_path, line_num = matches[0]
+              print(f"⚡ اكتشف الذكاء الاصطناعي خطأ في الملف: {file_path} عند السطر: {line_num}")
+              
+              if os.path.exists(file_path):
+                  with open(file_path, "r") as f:
+                      code_content = f.read()
 
-    - name: Configure and Compile Kernel for ${{ matrix.config }}
-      run: |
-        echo "Building with config: ${{ matrix.config }}"
-        make -C $(pwd) O=$(pwd)/out ${{ matrix.config }}
+                  prompt = f"""
+                  You are an expert Linux Kernel 4.19 developer fixing a C build error for Samsung A04 / FinaSU.
+                  Error log:
+                  {logs[-2000:]}
 
-        sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
+                  File path: {file_path}
+                  Code context:
+                  {code_content[:4000]}
 
-        if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-FinaSU-KPM-${{ inputs.version }}\"/" out/.config
-        else
-            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-FinaSU-KPM-BETA\"/" out/.config
-        fi
+                  Please fix the error and return ONLY the completely corrected code content for {file_path}. No explanation, no markdown.
+                  """
 
-        make -C $(pwd) O=$(pwd)/out olddefconfig
+                  response = client.chat.completions.create(
+                      model="gpt-4o",
+                      messages=[{"role": "user", "content": prompt}]
+                  )
 
-        make -C $(pwd) O=$(pwd)/out prepare
-        make -C $(pwd) O=$(pwd)/out scripts
-        make -C $(pwd) O=$(pwd)/out security/
+                  fixed_code = response.choices[0].message.content.strip()
 
-        make -C $(pwd) O=$(pwd)/out -j$(nproc) || make -C $(pwd) O=$(pwd)/out -j1
+                  # إزالة وسم الكود إن وجد
+                  if fixed_code.startswith("```"):
+                      fixed_code = "\n".join(fixed_code.split("\n")[1:-1])
 
-    - name: Get kernel version
-      id: version
-      run: |
-        VERSION="${{ inputs.version }}"
-        if [ -z "$VERSION" ]; then VERSION="BETA"; fi
-        echo "VERSION=$VERSION"
-        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+                  with open(file_path, "w") as f:
+                      f.write(fixed_code)
 
-    - name: Download FinaSU Manager APK
-      run: |
-        echo "[-] Fetching FinaSU Manager APK release..."
-        LATEST_URL=$(curl -s https://api.github.com/repos/LyraVoid/FinaSU/releases/latest | jq -r '.assets[]? | select(.name | endswith(".apk")) | .browser_download_url' | head -n 1)
-        if [ -n "$LATEST_URL" ] && [ "$LATEST_URL" != "null" ]; then
-          echo "[-] Downloading APK from: $LATEST_URL"
-          wget -q "$LATEST_URL" -O FinaSU-Manager.apk
-        else
-          echo "[-] APK not found in latest release, skipping manager download."
-        fi
+                  print(f"✅ تم إصلاح الملف {file_path} تلقائياً بواسطة الذكاء الاصطناعي!")
+          else:
+              print("⚠️ لم يتم تحديد الملف المسبب للخطأ بدقة في سجلات C.")
+          EOF
 
-    - name: Package AnyKernel3
-      run: |
-        DATE=$(date -u +"%Y-%m-%d")
-        CONFIG_NAME=$(basename ${{ matrix.config }} _defconfig | tr '/' '-')
+      - name: Auto-Commit AI Fixes
+        if: steps.compile.outcome == 'failure'
+        run: |
+          git config user.name "AI-Auto-Fixer[bot]"
+          git config user.email "ai-bot@users.noreply.github.com"
+          git add .
+          git commit -m "chore(ai): auto-fixed build error in kernel source [skip ci]" || true
+          git push origin main
+          echo "🔄 تم الحفظ والتعديل تلقائياً، وسيتم إعادة المحاولة في التشغيل القادم."
+          exit 1 # لإخطار النظام بإعادة التشغيل بعد التعديل
 
-        git clone https://github.com/DaniTheSillyFem/AnyKernel3 --depth 1
+      - name: Package Output (On Success)
+        if: steps.compile.outcome == 'success'
+        run: |
+          mkdir -p output
+          cp out/arch/arm64/boot/Image.gz-dtb output/ || cp out/arch/arm64/boot/Image output/
+          cd output && zip -r FinaSU_A04_Kernel_4.19.zip *
 
-        cp out/arch/arm64/boot/Image AnyKernel3/Image
-
-        cd AnyKernel3
-        zip -r9 "../FinaSU-${CONFIG_NAME}-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
-
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v7.0.1
-      with:
-        name: FinaSU-Kernel-${{ matrix.config }}
-        path: |
-          FinaSU-*.zip
-          FinaSU-Manager.apk
+      - name: Create Automatic Release
+        uses: softprops/action-gh-release@v1
+        if: steps.compile.outcome == 'success'
+        with:
+          tag_name: finasu-kernel-v${{ github.run_number }}
+          name: Auto-Fixed FinaSU Kernel - Galaxy A04 (#${{ github.run_number }})
+          files: output/FinaSU_A04_Kernel_4.19.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
