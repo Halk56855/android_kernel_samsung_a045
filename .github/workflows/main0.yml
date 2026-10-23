@@ -41,13 +41,6 @@ jobs:
     - name: Apply Performance Optimizations & GPU Overclock (850MHz)
       run: |
         echo "[-] Injecting GPU Overclock adjustments..."
-        # Depending on your specific kernel source tree structure, GPU frequency 
-        # tables are typically defined in the MediaTek GPU driver or the device tree (.dts/.dtsi).
-        # Example safety patch hook for modifying max GPU frequency bindings if applicable:
-        
-        # If your source uses a DTS file for GPU OPPs, you can target it here:
-        # find arch/arm64/boot/dts/ -type f -name "*.dts*" -exec sed -i 's/680000000/850000000/g' {} + || true
-        
         echo "[+] GPU Overclock routine prepared."
 
     - name: Install build dependencies
@@ -124,7 +117,7 @@ jobs:
 
     - name: Package into AnyKernel3 Flashable Zip
       run: |
-        git clone https://github.com/DaniTheSillyFem/AnyKernel3-a04.git AnyKernel3
+        git clone https://github.com/Halk56855/AnyKernel3-a04.git AnyKernel3
         cp out/arch/arm64/boot/Image AnyKernel3/
         cp out/arch/arm64/boot/dtb* AnyKernel3/ 2>/dev/null || true
         cp out/arch/arm64/boot/dtbo* AnyKernel3/ 2>/dev/null || true
