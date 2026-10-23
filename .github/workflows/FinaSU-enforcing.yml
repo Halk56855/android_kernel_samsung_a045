@@ -1,4 +1,4 @@
-name: Autonomous AI Kernel Build & Fixer
+.name: Autonomous AI Kernel Build & Fixer
 
 on:
   push:
