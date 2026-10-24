@@ -61,11 +61,11 @@ jobs:
             
             export PATH="$GCC_DIR:$CLANG_DIR:$PATH"
             
-            # استخدام اسم ملف الإعدادات الصحيح والموجود في المستودع (a04_defconfig)
+            # تهيئة ملف الإعدادات
             make O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-none-linux-gnu- a04_defconfig
             
-            # بدء عملية تجميع النواة
-            make O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-none-linux-gnu- -j$(nproc)
+            # بناء النواة مع إضافة KCFLAGS لتجاهل التحذيرات البرمجية القديمة
+            make O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-none-linux-gnu- KCFLAGS="-Wno-error" -j$(nproc)
 
         - name: Package Kernel with AnyKernel3
           run: |
