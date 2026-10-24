@@ -1,0 +1,73 @@
+name: Build Samsung Galaxy A04 Kernel with ReSukiSU & AnyKernel3 (4.19 Non-GKI)
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Kernel Source Branch'
+        required: true
+        default: 'main'
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v3
+
+      - name: Set up Environment & Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc-aarch64-linux-gnu bc bison flex libssl-dev libelf-dev git curl wget zip
+
+      - name: Integrate ReSukiSU
+        run: |
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
+
+      - name: Configure Defconfig & Enable ReSukiSU / Kprobes
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          make clean && make mrproper
+          make rsuntk-a04_defconfig
+          
+          # حقن خيارات ReSukiSU و Kprobes و SELinux بأمان تام
+          echo "CONFIG_KSU=y" >> .config
+          echo "CONFIG_KPROBES=y" >> .config
+          echo "CONFIG_HAVE_KPROBES=y" >> .config
+          echo "CONFIG_KPROBE_EVENTS=y" >> .config
+          echo "CONFIG_SECURITY_SELINUX=y" >> .config
+          make olddefconfig
+
+      - name: Prepare Kernel Headers and flask.h
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          make prepare
+          make scripts
+
+      - name: Compile Kernel Image and DTB
+        run: |
+          export ARCH=arm64
+          export SUBARCH=arm64
+          make -j$(nproc) Image.gz dtb
+
+      - name: Clone AnyKernel3-a04 Repository
+        run: |
+          git clone https://github.com/Halk56855/AnyKernel3-a04.git anykernel
+
+      - name: Pack Kernel into AnyKernel3 Flashable Zip
+        run: |
+          # نسخ ملف النواة الناتج إلى مجلد AnyKernel3
+          cp arch/arm64/boot/Image.gz anykernel/
+          
+          # ضغط الملفات لتصبح جاهزة للتفليش
+          cd anykernel
+          zip -r9 ../Galaxy-A04-ReSukiSU-Flashable.zip * -x ".git*" "README.md"
+          cd ..
+
+      - name: Upload Flashable Zip Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Galaxy-A04-ReSukiSU-Flashable-Zip
+          path: Galaxy-A04-ReSukiSU-Flashable.zip
