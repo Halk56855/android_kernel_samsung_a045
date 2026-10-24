@@ -22,13 +22,22 @@ jobs:
         
         echo "[+] KernelSU integrated successfully!"
 
-    - name: Fix KernelSU Init RC Hook Symbol via Macro
+    - name: Fix Missing KernelSU Symbol (ksu_is_init_rc_hook_enabled)
       run: |
-        echo "[-] Patching include/linux/compiler.h to define ksu_is_init_rc_hook_enabled as a macro..."
-        if ! grep -q "#define ksu_is_init_rc_hook_enabled" include/linux/compiler.h; then
-          sed -i '1i #define ksu_is_init_rc_hook_enabled() 0' include/linux/compiler.h
+        echo "[-] Creating override file to define missing ksu_is_init_rc_hook_enabled symbol..."
+        cat << 'EOF' > drivers/kernelsu/ksu_override.c
+        #include <linux/types.h>
+        bool ksu_is_init_rc_hook_enabled(void) {
+            return false;
+        }
+        EOF
+        
+        if [ -f "drivers/kernelsu/Makefile" ]; then
+          echo "obj-y += ksu_override.o" >> drivers/kernelsu/Makefile
+        elif [ -f "drivers/kernelsu/kernel/Makefile" ]; then
+          echo "obj-y += ksu_override.o" >> drivers/kernelsu/kernel/Makefile
         fi
-        echo "[+] Header patched successfully!"
+        echo "[+] Missing symbol override added successfully!"
 
     - name: Apply Performance Optimizations & GPU Overclock (850MHz)
       run: |
@@ -99,7 +108,6 @@ jobs:
         CONFIG_KPROBE_EVENTS=y
         CONFIG_HAVE_KPROBES=y
         CONFIG_KSU_KPROBE_HOOKS=y
-        CONFIG_KSU_INIT_RC_HOOK=n
         CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
         CONFIG_CC_OPTIMIZE_FOR_SIZE=n
         EOT
