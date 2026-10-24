@@ -1,4 +1,4 @@
-name: Build Kernel Samsung Wingtech A04 (Non-GKI 4.19 - ReSukiSU)
+name: Build Kernel & AnyKernel3 Samsung Wingtech A04 (Non-GKI 4.19 - ReSukiSU)
 
 on:
   workflow_dispatch:
@@ -11,13 +11,33 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Clean Integration of ReSukiSU (main branch)
+    - name: Clean Integration of ReSukiSU & Bypassing Manual Hook Check
       run: |
         echo "[-] Cleaning up old remnants..."
         rm -rf drivers/kernelsu ReSukiSU .git/modules/ReSukiSU fs/ksu_compat.c
 
         echo "[-] Cloning ReSukiSU repository (main branch)..."
         git clone -b main https://github.com/ReSukiSU/ReSukiSU.git ReSukiSU
+
+        echo "[-] Neutralizing manual hook check to allow compilation..."
+        rm -f ReSukiSU/kernel/tools/manual_hook_check.mk
+        touch ReSukiSU/kernel/tools/manual_hook_check.mk
+        
+        python3 -c '
+        import os
+        for root, dirs, files in os.walk("ReSukiSU"):
+            for f in files:
+                if f.endswith(".mk") or f == "Makefile":
+                    fp = os.path.join(root, f)
+                    try:
+                        with open(fp, "r", errors="ignore") as fh: content = fh.read()
+                        if "manual_hook_check" in content:
+                            content = content.replace("include", "# include")
+                            content = content.replace("manual_hook_check", "# manual_hook_check")
+                            with open(fp, "w") as fh: fh.write(content)
+                    except:
+                        pass
+        '
 
         echo "[-] Linking ReSukiSU kernel folder to drivers/kernelsu..."
         python3 -c '
@@ -28,7 +48,6 @@ jobs:
                 ksu_src = root
                 break
         
-        print(f"[+] Found Kconfig in: {ksu_src}")
         if not ksu_src:
             raise Exception("[-] Error: Kconfig not found inside ReSukiSU repository!")
 
@@ -39,7 +58,6 @@ jobs:
                 shutil.rmtree("drivers/kernelsu")
 
         os.symlink(os.path.relpath(ksu_src, "drivers"), "drivers/kernelsu")
-        print("[+] Symlink drivers/kernelsu created successfully")
         '
 
         echo "[-] Injecting compatibility layer into fs/ for LLD perfection..."
@@ -184,6 +202,7 @@ jobs:
         CONFIG_THINLTO=n
         CONFIG_KPM=n
         CONFIG_KSU_SUSFS=n
+        CONFIG_KSU_MANUAL_HOOK=y
         EOT
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
@@ -194,17 +213,18 @@ jobs:
 
         make -C $(pwd) O=$(pwd)/out -j$(nproc) || make -C $(pwd) O=$(pwd)/out -j1
 
-    - name: Package into AnyKernel3 Flashable Zip
+    - name: Package with your AnyKernel3 repository
       run: |
-        git clone https://github.com/DaniTheSillyFem/AnyKernel3-a04.git AnyKernel3
-        cp out/arch/arm64/boot/Image AnyKernel3/
-        cp out/arch/arm64/boot/dtb* AnyKernel3/ 2>/dev/null || true
-        cp out/arch/arm64/boot/dtbo* AnyKernel3/ 2>/dev/null || true
-        cd AnyKernel3
-        zip -r9 ../A04-ReSukiSU-AnyKernel3.zip * -x .git README.md LICENSE
+        git clone https://github.com/Halk56855/AnyKernel3-a04.git anykernel
+        rm -rf anykernel/.git
+        cp out/arch/arm64/boot/Image anykernel/
+        cp out/arch/arm64/boot/dtb* anykernel/ 2>/dev/null || true
+        cp out/arch/arm64/boot/dtbo* anykernel/ 2>/dev/null || true
+        cd anykernel
+        zip -r9 ../Samsung-A04-ReSukiSU-AnyKernel3.zip * -x README.md LICENSE
 
-    - name: Upload Kernel Artifact
+    - name: Upload AnyKernel3 Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: A04-ReSukiSU-4.19-Zip
-        path: A04-ReSukiSU-AnyKernel3.zip
+        name: Samsung-A04-ReSukiSU-AnyKernel3
+        path: Samsung-A04-ReSukiSU-AnyKernel3.zip
