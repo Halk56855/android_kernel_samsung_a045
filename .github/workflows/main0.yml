@@ -80,7 +80,7 @@ jobs:
           python3 scripts/kconfig/merge_config.sh -O $(pwd)/out $(pwd)/out/.config arch/arm64/configs/rsuntk.config || true
         fi
 
-        # Disable IKHEADERS to prevent pipe errors, enable KernelSU requirements, and force -O2 Performance Optimization
+        # Disable IKHEADERS to prevent pipe errors, configure KernelSU requirements, and force -O2 Performance Optimization
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config || true
         sed -i 's/CONFIG_CC_OPTIMIZE_FOR_SIZE=y/CONFIG_CC_OPTIMIZE_FOR_SIZE=n/g' $(pwd)/out/.config || true
 
@@ -91,7 +91,7 @@ jobs:
         CONFIG_KPROBE_EVENTS=y
         CONFIG_HAVE_KPROBES=y
         CONFIG_KSU_KPROBE_HOOKS=y
-        CONFIG_KSU_INIT_RC_HOOK=y
+        CONFIG_KSU_INIT_RC_HOOK=n
         CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y
         CONFIG_CC_OPTIMIZE_FOR_SIZE=n
         EOT
