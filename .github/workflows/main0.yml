@@ -22,6 +22,11 @@ jobs:
         
         echo "[+] KernelSU integrated successfully!"
 
+    - name: Fix KernelSU Init RC Hook Symbol in Headers
+      run: |
+        echo "[-] Patching include/linux/compiler.h to resolve missing ksu_is_init_rc_hook_enabled symbol..."
+        sed -i 's/ksu_is_init_rc_hook_enabled()/0/g' include/linux/compiler.h || true
+
     - name: Apply Performance Optimizations & GPU Overclock (850MHz)
       run: |
         echo "[-] Injecting GPU Overclock adjustments..."
