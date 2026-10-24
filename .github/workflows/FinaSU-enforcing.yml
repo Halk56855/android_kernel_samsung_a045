@@ -21,7 +21,7 @@ jobs:
 
         - name: Clone and Inject FinaSU
           run: |
-            # استنساخ مستودع FinaSU الخاص بك لجلب ملفات النواة
+            # استنساخ مستودع FinaSU لجلب ملفات النواة
             git clone https://github.com/Halk56855/FinaSU-galaxy-a04.git temp_finasu
             
             # نسخ ملفات FinaSU إلى مجلد السائقين داخل النواة
@@ -48,7 +48,6 @@ jobs:
 
         - name: Setup Toolchain (AOSPA Clang)
           run: |
-            # استنساخ مستودع Clang الخاص بـ AOSPA الذي قمت بتحديده
             git clone --depth=1 https://github.com/AOSPA/android_prebuilts_clang_host_linux-x86.git clang-aosp
 
         - name: Build Kernel
@@ -56,21 +55,21 @@ jobs:
             export ARCH=arm64
             export SUBARCH=arm64
             
-            # تحديد مسارات أدوات التجميع بدقة
+            # تحديد مسارات أدوات التجميع
             GCC_DIR="$(pwd)/toolchain/gcc/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu/bin"
             CLANG_DIR="$(pwd)/clang-aosp/clang-r416183b/bin"
             
             export PATH="$GCC_DIR:$CLANG_DIR:$PATH"
             
-            # تحميل إعدادات النواة الافتراضية الخاصة بجهاز A04
-            make O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-none-linux-gnu- a045_defconfig
+            # استخدام اسم ملف الإعدادات الصحيح والموجود في المستودع (a04_defconfig)
+            make O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-none-linux-gnu- a04_defconfig
             
-            # بدء عملية تجميع النواة مستخدماً كامل قدرة المعالج السحابي
+            # بدء عملية تجميع النواة
             make O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-none-linux-gnu- -j$(nproc)
 
         - name: Package Kernel with AnyKernel3
           run: |
-            # استنساخ مستودع AnyKernel3 الخاص بك
+            # استنساخ مستودع AnyKernel3
             git clone https://github.com/Halk56855/AnyKernel3-a04.git anykernel
             
             # نسخ ملف النواة الناتج إلى مجلد AnyKernel3
