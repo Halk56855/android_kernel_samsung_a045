@@ -1,145 +1,72 @@
-.name: Autonomous AI Kernel Build & Fixer
+name: Build FinaSU Kernel and Pack AnyKernel3 for Galaxy A04
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
+      - master
 
 jobs:
-  build-and-autofix:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write  # للسماح للذكاء الاصطناعي بعمل Commit والتعديل التلقائي
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - name: Checkout Kernel Source
+          uses: actions/checkout@v4
 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: recursive
+        - name: Install Dependencies
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 make clang
 
-      - name: Setup Build Environment
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev git wget ccache zip python3 python3-pip
-          pip3 install openai
+        - name: Clone and Inject FinaSU
+          run: |
+            # استنساخ مستودع FinaSU الخاص بك لجلب ملفات النواة
+            git clone https://github.com/Halk56855/FinaSU-galaxy-a04.git temp_finasu
+            
+            # نسخ ملفات FinaSU إلى مجلد السائقين داخل النواة
+            mkdir -p drivers/kernelsu
+            cp -rf temp_finasu/kernel/* drivers/kernelsu/
+            
+            # ربط الكود آلياً بملفات Kconfig و Makefile الخاصة بالنواة
+            if ! grep -q "kernelsu" drivers/Kconfig; then
+              echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
+            fi
+            if ! grep -q "kernelsu" drivers/Makefile; then
+              echo 'obj-y += kernelsu/' >> drivers/Makefile
+            fi
 
-      - name: Setup Android Clang & GCC Toolchain
-        run: |
-          mkdir -p toolchain
-          cd toolchain
-          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android12-release/clang-r416183b.tar.gz -O clang.tar.gz
-          mkdir clang && tar -xf clang.tar.gz -C clang
-          wget -q https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/refs/heads/android12-release.tar.gz -O gcc.tar.gz
-          mkdir gcc && tar -xf gcc.tar.gz -C gcc
+        - name: Setup Toolchain (Clang)
+          run: |
+            git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b master-device --depth=1 clang-aosp
 
-      - name: Integrate FinaSU Source
-        run: |
-          if [ ! -d "finasu-src" ]; then
-            git clone https://github.com/LyraVoid/FinaSU.git finasu-src[span_0](start_span)[span_0](end_span)
-          fi
+        - name: Build Kernel
+          run: |
+            export ARCH=arm64
+            export SUBARCH=arm64
+            export PATH="$(pwd)/clang-aosp/clang-r416183b/bin:$PATH"
+            
+            # تحميل إعدادات النواة الافتراضية الخاصة بجهاز A04
+            make O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- a045_defconfig
+            
+            # بدء عملية تجميع النواة مستخدماً كامل قدرة المعالج السحابي
+            make O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc)
 
-      - name: Attempt Kernel Compilation
-        id: compile
-        continue-on-error: true
-        run: |
-          export PATH=$GITHUB_WORKSPACE/toolchain/clang/bin:$GITHUB_WORKSPACE/toolchain/gcc/bin:$PATH
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-android-
-          export CC=clang
-          
-          make O=out a04_defconfig
-          make -j$(nproc) O=out 2>&1 | tee build_error.log
+        - name: Package Kernel with AnyKernel3
+          run: |
+            # استنساخ مستودع AnyKernel3 الخاص بك
+            git clone https://github.com/Halk56855/AnyKernel3-a04.git anykernel
+            
+            # نسخ ملف النواة الناتج إلى مجلد AnyKernel3
+            cp out/arch/arm64/boot/Image.gz anykernel/
+            
+            # ضغط المجلد لإنتاج ملف ZIP النهائي القابل للتفليش
+            cd anykernel
+            zip -r9 ../FinaSU-Galaxy-A04-Flashable.zip *
+            cd ..
 
-      - name: AI Auto-Fix (Runs Automatically on Failure without Prompts)
-        if: steps.compile.outcome == 'failure'
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: |
-          python3 - << 'EOF'
-          import os
-          import re
-          import openai
-
-          api_key = os.getenv("OPENAI_API_KEY")
-          if not api_key:
-              print("❌ لم يتم العثور على OPENAI_API_KEY. يرجى إضافته في Repository Secrets.")
-              exit(1)
-
-          client = openai.OpenAI(api_key=api_key)
-
-          # قراءة سجل الأخطاء
-          with open("build_error.log", "r") as f:
-              logs = f.read()
-
-          # استخراج اسم الملف المصدر المسبب للخطأ
-          matches = re.findall(r'([a-zA-Z0-9_\-\/]+\.[c|h]):(\d+):\d+: error:', logs)
-          
-          if matches:
-              file_path, line_num = matches[0]
-              print(f"⚡ اكتشف الذكاء الاصطناعي خطأ في الملف: {file_path} عند السطر: {line_num}")
-              
-              if os.path.exists(file_path):
-                  with open(file_path, "r") as f:
-                      code_content = f.read()
-
-                  prompt = f"""
-                  You are an expert Linux Kernel 4.19 developer fixing a C build error for Samsung A04 / FinaSU.
-                  Error log:
-                  {logs[-2000:]}
-
-                  File path: {file_path}
-                  Code context:
-                  {code_content[:4000]}
-
-                  Please fix the error and return ONLY the completely corrected code content for {file_path}. No explanation, no markdown.
-                  """
-
-                  response = client.chat.completions.create(
-                      model="gpt-4o",
-                      messages=[{"role": "user", "content": prompt}]
-                  )
-
-                  fixed_code = response.choices[0].message.content.strip()
-
-                  # إزالة وسم الكود إن وجد
-                  if fixed_code.startswith("```"):
-                      fixed_code = "\n".join(fixed_code.split("\n")[1:-1])
-
-                  with open(file_path, "w") as f:
-                      f.write(fixed_code)
-
-                  print(f"✅ تم إصلاح الملف {file_path} تلقائياً بواسطة الذكاء الاصطناعي!")
-          else:
-              print("⚠️ لم يتم تحديد الملف المسبب للخطأ بدقة في سجلات C.")
-          EOF
-
-      - name: Auto-Commit AI Fixes
-        if: steps.compile.outcome == 'failure'
-        run: |
-          git config user.name "AI-Auto-Fixer[bot]"
-          git config user.email "ai-bot@users.noreply.github.com"
-          git add .
-          git commit -m "chore(ai): auto-fixed build error in kernel source [skip ci]" || true
-          git push origin main
-          echo "🔄 تم الحفظ والتعديل تلقائياً، وسيتم إعادة المحاولة في التشغيل القادم."
-          exit 1 # لإخطار النظام بإعادة التشغيل بعد التعديل
-
-      - name: Package Output (On Success)
-        if: steps.compile.outcome == 'success'
-        run: |
-          mkdir -p output
-          cp out/arch/arm64/boot/Image.gz-dtb output/ || cp out/arch/arm64/boot/Image output/
-          cd output && zip -r FinaSU_A04_Kernel_4.19.zip *
-
-      - name: Create Automatic Release
-        uses: softprops/action-gh-release@v1
-        if: steps.compile.outcome == 'success'
-        with:
-          tag_name: finasu-kernel-v${{ github.run_number }}
-          name: Auto-Fixed FinaSU Kernel - Galaxy A04 (#${{ github.run_number }})
-          files: output/FinaSU_A04_Kernel_4.19.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        - name: Upload Flashable ZIP
+          uses: actions/upload-artifact@v4
+          with:
+            name: FinaSU-Galaxy-A04-Flashable-ZIP
+            path: FinaSU-Galaxy-A04-Flashable.zip
