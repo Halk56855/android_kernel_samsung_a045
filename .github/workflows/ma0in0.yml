@@ -1,10 +1,10 @@
-name: Build TouchDirt Kernel - Multi-Root Engine
+name: Build TouchDirt Kernel - Non-GKI Samsung A04
 
 on:
   workflow_dispatch:
     inputs:
       root_provider:
-        description: 'اختر مشروَع الروت المراد دمجه بالنواة'
+        description: 'اختر مشروَع الروت (يوصى بـ SukiSU-Ultra أو KernelSU-Next لـ 4.19)'
         required: true
         default: 'SukiSU-Ultra'
         type: choice
@@ -37,7 +37,7 @@ jobs:
     - name: Checkout Source Code
       uses: actions/checkout@v4
 
-    - name: Integrate Selected Root Engine
+    - name: Integrate Root Engine for Non-GKI 4.19
       run: |
         ROOT_CHOICE="${{ github.event.inputs.root_provider || inputs.root_provider }}"
         echo "=========================================="
@@ -46,30 +46,27 @@ jobs:
 
         case "$ROOT_CHOICE" in
           "SukiSU-Ultra")
-            echo "[-] Cloning SukiSU-Ultra..."
             git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
             ;;
           "KernelSU-Next")
-            echo "[-] Cloning KernelSU Next..."
             git clone -b next https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU
             ;;
           "FinaSU")
-            echo "[-] Cloning FinaSU..."
             git clone -b main https://github.com/LyraVoid/FinaSU.git KernelSU
             ;;
           "KernelSU")
-            echo "[-] Cloning Official KernelSU..."
             git clone -b main https://github.com/tiann/KernelSU.git KernelSU
             ;;
           *)
-            echo "[!] Invalid selection. Defaulting to SukiSU-Ultra"
             git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
             ;;
         esac
 
-        echo "[-] Running KernelSU Setup script..."
+        echo "[-] Running KernelSU Setup script in 'builtin' mode for Non-GKI..."
         chmod +x ./KernelSU/kernel/setup.sh
-        ./KernelSU/kernel/setup.sh
+        
+        # التفعيل الإجباري المدمج (builtin) المخصص لنواة 4.19 Non-GKI
+        ./KernelSU/kernel/setup.sh builtin
 
     - name: Setup SUSFS Patches
       run: |
@@ -124,7 +121,9 @@ jobs:
         echo "STRIP=llvm-strip" >> $GITHUB_ENV
         echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
         echo "ARCH=arm64" >> $GITHUB_ENV
-        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
+
+        # تجاوز تحذيرات المترجم للنواة القديمة
+        echo "KCFLAGS=-w -Wno-error=format -Wno-error -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
 
     - name: Configure and Compile Kernel
@@ -138,9 +137,14 @@ jobs:
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
-        sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
+        # --- حقن خيارات الروت وإجبار تفاعلها مع نواة 4.19 Non-GKI ---
+        echo "CONFIG_KSU=y" >> $(pwd)/out/.config
+        echo "CONFIG_KSU_TAMPER_SYS_PROC_ATTR=y" >> $(pwd)/out/.config
+        echo "CONFIG_KALLSYMS=y" >> $(pwd)/out/.config
+        echo "CONFIG_KALLSYMS_ALL=y" >> $(pwd)/out/.config
+        echo "CONFIG_KPM=y" >> $(pwd)/out/.config
 
-        # تسمية النواة بحسب نوع الروت المختار والإصدار
+        sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
         sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-${ROOT_CHOICE}-${VERSION_TAG}\"/" out/.config
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
