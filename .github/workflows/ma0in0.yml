@@ -4,15 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       root_provider:
-        description: 'اختر مشروَع الروت (يوصى بـ KernelSU أو SukiSU لـ 4.19)'
+        description: 'اختر مشروَع الروت (للنواة 4.19 يفضل KernelSU الأصلي أو SukiSU المتوافق)'
         required: true
-        default: 'SukiSU-Ultra'
+        default: 'KernelSU'
         type: choice
         options:
+        - 'KernelSU'
         - 'SukiSU-Ultra'
         - 'KernelSU-Next'
         - 'FinaSU'
-        - 'KernelSU'
       version:
         description: 'رقم الإصدار (مثال: v1.0)'
         required: false
@@ -23,7 +23,7 @@ on:
     inputs:
       root_provider:
         required: false
-        default: 'SukiSU-Ultra'
+        default: 'KernelSU'
         type: string
       version:
         required: true
@@ -45,20 +45,24 @@ jobs:
         echo "=========================================="
 
         case "$ROOT_CHOICE" in
+          "KernelSU")
+            echo "[-] Cloning Official KernelSU (Stable for 4.19)..."
+            git clone -b main https://github.com/tiann/KernelSU.git KernelSU
+            ;;
           "SukiSU-Ultra")
+            echo "[-] Cloning SukiSU-Ultra..."
             git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
             ;;
           "KernelSU-Next")
+            echo "[-] Cloning KernelSU Next..."
             git clone -b next https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU
             ;;
           "FinaSU")
+            echo "[-] Cloning FinaSU..."
             git clone -b main https://github.com/LyraVoid/FinaSU.git KernelSU
             ;;
-          "KernelSU")
-            git clone -b main https://github.com/tiann/KernelSU.git KernelSU
-            ;;
           *)
-            git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
+            git clone -b main https://github.com/tiann/KernelSU.git KernelSU
             ;;
         esac
 
@@ -75,12 +79,11 @@ jobs:
 
     - name: Fix Missing static_call.h for Kernel 4.19
       run: |
-        echo "[-] Creating compatibility stub for static_call.h in Kernel 4.19..."
+        echo "[-] Creating compatibility stub for static_call.h..."
         mkdir -p include/linux
         if [ ! -f "include/linux/static_call.h" ]; then
           echo "#ifndef _LINUX_STATIC_CALL_H" > include/linux/static_call.h
           echo "#define _LINUX_STATIC_CALL_H" >> include/linux/static_call.h
-          echo "// Compatibility stub for older kernels (4.19)" >> include/linux/static_call.h
           echo "#endif" >> include/linux/static_call.h
         fi
 
@@ -131,7 +134,6 @@ jobs:
         echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
         echo "ARCH=arm64" >> $GITHUB_ENV
 
-        # إضافة مسارات include الجديدة لضمان قراءة الملفات الوهمية
         echo "KCFLAGS=-w -Wno-error=format -Wno-error -I$(pwd)/include -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
 
@@ -146,12 +148,11 @@ jobs:
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
-        # --- حقن خيارات الروت وإجبار تفاعلها مع نواة 4.19 ---
+        # --- حقن خيارات الروت وإجبار تفعيلها لنواة 4.19 ---
         echo "CONFIG_KSU=y" >> $(pwd)/out/.config
         echo "CONFIG_KSU_TAMPER_SYS_PROC_ATTR=y" >> $(pwd)/out/.config
         echo "CONFIG_KALLSYMS=y" >> $(pwd)/out/.config
         echo "CONFIG_KALLSYMS_ALL=y" >> $(pwd)/out/.config
-        echo "CONFIG_KPM=y" >> $(pwd)/out/.config
 
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
         sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-${ROOT_CHOICE}-${VERSION_TAG}\"/" out/.config
@@ -166,7 +167,7 @@ jobs:
 
     - name: Package AnyKernel3
       run: |
-        ROOT_CHOICE="${{ github.event.inputs.root_provider || inputs.root_provider }}"
+        ROOT_CPU="${{ github.event.inputs.root_provider || inputs.root_provider }}"
         VERSION_TAG="${{ github.event.inputs.version || inputs.version }}"
         DATE=$(date -u +"%Y-%m-%d")
 
@@ -175,7 +176,7 @@ jobs:
         cp out/arch/arm64/boot/Image AnyKernel3/Image
 
         cd AnyKernel3
-        zip -r9 "../TouchDirt-${ROOT_CHOICE}-${VERSION_TAG}-${DATE}.zip" . -x ".git/*"
+        zip -r9 "../TouchDirt-${ROOT_CPU}-${VERSION_TAG}-${DATE}.zip" . -x ".git/*"
 
     - name: Upload AnyKernel3 ZIP
       uses: actions/upload-artifact@v4
