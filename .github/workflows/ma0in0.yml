@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       root_provider:
-        description: 'اختر مشروَع الروت (يوصى بـ SukiSU-Ultra أو KernelSU-Next لـ 4.19)'
+        description: 'اختر مشروَع الروت (يوصى بـ KernelSU أو SukiSU لـ 4.19)'
         required: true
         default: 'SukiSU-Ultra'
         type: choice
@@ -62,10 +62,8 @@ jobs:
             ;;
         esac
 
-        echo "[-] Running KernelSU Setup script in 'builtin' mode for Non-GKI..."
+        echo "[-] Running KernelSU Setup script in 'builtin' mode..."
         chmod +x ./KernelSU/kernel/setup.sh
-        
-        # التفعيل الإجباري المدمج (builtin) المخصص لنواة 4.19 Non-GKI
         ./KernelSU/kernel/setup.sh builtin
 
     - name: Setup SUSFS Patches
@@ -74,6 +72,17 @@ jobs:
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
+
+    - name: Fix Missing static_call.h for Kernel 4.19
+      run: |
+        echo "[-] Creating compatibility stub for static_call.h in Kernel 4.19..."
+        mkdir -p include/linux
+        if [ ! -f "include/linux/static_call.h" ]; then
+          echo "#ifndef _LINUX_STATIC_CALL_H" > include/linux/static_call.h
+          echo "#define _LINUX_STATIC_CALL_H" >> include/linux/static_call.h
+          echo "// Compatibility stub for older kernels (4.19)" >> include/linux/static_call.h
+          echo "#endif" >> include/linux/static_call.h
+        fi
 
     - name: Install Build Dependencies
       run: |
@@ -122,8 +131,8 @@ jobs:
         echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
         echo "ARCH=arm64" >> $GITHUB_ENV
 
-        # تجاوز تحذيرات المترجم للنواة القديمة
-        echo "KCFLAGS=-w -Wno-error=format -Wno-error -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
+        # إضافة مسارات include الجديدة لضمان قراءة الملفات الوهمية
+        echo "KCFLAGS=-w -Wno-error=format -Wno-error -I$(pwd)/include -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
 
     - name: Configure and Compile Kernel
@@ -137,7 +146,7 @@ jobs:
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
-        # --- حقن خيارات الروت وإجبار تفاعلها مع نواة 4.19 Non-GKI ---
+        # --- حقن خيارات الروت وإجبار تفاعلها مع نواة 4.19 ---
         echo "CONFIG_KSU=y" >> $(pwd)/out/.config
         echo "CONFIG_KSU_TAMPER_SYS_PROC_ATTR=y" >> $(pwd)/out/.config
         echo "CONFIG_KALLSYMS=y" >> $(pwd)/out/.config
