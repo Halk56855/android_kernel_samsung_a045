@@ -61,13 +61,20 @@ jobs:
             
             export PATH="$GCC_DIR:$CLANG_DIR:$PATH"
             
-            # تهيئة ملف الإعدادات
+            # تهيئة ملف الإعدادات الأساسي
             make O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-none-linux-gnu- a04_defconfig
             
-            # تعطيل ميزة IKHEADERS التي تسببت في الخطأ لتجاوز المشكلة نهائياً
-            scripts/config --file out/.config --disable IKHEADERS || echo "IKHEADERS option not found, skipping"
+            # تفعيل FinaSU وخيارات KProbes الضرورية لنواة 4.19 وتليين القيود
+            scripts/config --file out/.config --enable CONFIG_KSU
+            scripts/config --file out/.config --enable CONFIG_KPROBES
+            scripts/config --file out/.config --enable CONFIG_HAVE_KPROBES
+            scripts/config --file out/.config --enable CONFIG_KPROBE_EVENTS
+            scripts/config --file out/.config --disable IKHEADERS
             
-            # بناء النواة بنجاح تام
+            # تحديث الإعدادات تلقائياً
+            make O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-none-linux-gnu- olddefconfig
+            
+            # بناء النواة مع تجاهل التحذيرات البرمجية
             make O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-none-linux-gnu- KCFLAGS="-Wno-error" -j$(nproc)
 
         - name: Package Kernel with AnyKernel3
