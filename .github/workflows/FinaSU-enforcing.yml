@@ -1,97 +1,143 @@
-name: Build FinaSU Kernel and Pack AnyKernel3 for Galaxy A04
+name: Build TouchDirt Kernel - Multi-Root Engine
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - master
+    inputs:
+      root_provider:
+        description: 'اختر مشروع الروت المراد دمجه بالنواة'
+        required: true
+        default: 'SukiSU-Ultra'
+        type: choice
+        options:
+        - 'SukiSU-Ultra'
+        - 'KernelSU-Next'
+        - 'FinaSU'
+        - 'KernelSU'
+      version:
+        description: 'رقم الإصدار (مثال: v1.0)'
+        required: false
+        default: 'BETA'
+        type: string
+
+  workflow_call:
+    inputs:
+      root_provider:
+        required: false
+        default: 'SukiSU-Ultra'
+        type: string
+      version:
+        required: true
+        type: string
 
 jobs:
-    build:
-      runs-on: ubuntu-latest
-      steps:
-        - name: Checkout Kernel Source
-          uses: actions/checkout@v4
+  build:
+    runs-on: ubuntu-24.04
 
-        - name: Install Dependencies
-          run: |
-            sudo apt-get update
-            sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32z1-dev libelf-dev liblz4-tool libncurses5-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 make clang
+    steps:
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
 
-        - name: Clone and Inject FinaSU
-          run: |
-            # استنساخ مستودع FinaSU لجلب ملفات النواة
-            git clone https://github.com/Halk56855/FinaSU-galaxy-a04.git temp_finasu
-            
-            # نسخ ملفات FinaSU إلى مجلد السائقين داخل النواة
-            mkdir -p drivers/kernelsu
-            cp -rf temp_finasu/kernel/* drivers/kernelsu/
-            
-            # ربط الكود آلياً بملفات Kconfig و Makefile الخاصة بالنواة
-            if ! grep -q "kernelsu" drivers/Kconfig; then
-              echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
-            fi
-            if ! grep -q "kernelsu" drivers/Makefile; then
-              echo 'obj-y += kernelsu/' >> drivers/Makefile
-            fi
+    - name: Integrate Selected Root Engine
+      run: |
+        ROOT_CHOICE="${{ github.event.inputs.root_provider || inputs.root_provider }}"
+        echo "=========================================="
+        echo "[-] Selected Root Engine: $ROOT_CHOICE"
+        echo "=========================================="
 
-        - name: Download GCC Toolchain
-          run: |
-            mkdir -p toolchain/gcc
-            cd toolchain/gcc
-            wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
-              https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz || \
-            wget -q --show-progress \
-              https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
-            tar -xf gcc.tar.xz -C ./
+        case "$ROOT_CHOICE" in
+          "SukiSU-Ultra")
+            echo "[-] Cloning SukiSU-Ultra..."
+            git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
+            ;;
+          "KernelSU-Next")
+            echo "[-] Cloning KernelSU Next..."
+            git clone -b next https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU
+            ;;
+          "FinaSU")
+            echo "[-] Cloning FinaSU..."
+            git clone -b main https://github.com/LyraVoid/FinaSU.git KernelSU
+            ;;
+          "KernelSU")
+            echo "[-] Cloning Official KernelSU..."
+            git clone -b main https://github.com/tiann/KernelSU.git KernelSU
+            ;;
+          *)
+            echo "[!] Invalid selection. Defaulting to SukiSU-Ultra"
+            git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
+            ;;
+        esac
 
-        - name: Setup Toolchain (AOSPA Clang)
-          run: |
-            git clone --depth=1 https://github.com/AOSPA/android_prebuilts_clang_host_linux-x86.git clang-aosp
+        echo "[-] Running KernelSU Setup script..."
+        chmod +x ./KernelSU/kernel/setup.sh
+        ./KernelSU/kernel/setup.sh
 
-        - name: Build Kernel
-          run: |
-            export ARCH=arm64
-            export SUBARCH=arm64
-            
-            # تحديد مسارات أدوات التجميع
-            GCC_DIR="$(pwd)/toolchain/gcc/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu/bin"
-            CLANG_DIR="$(pwd)/clang-aosp/clang-r416183b/bin"
-            
-            export PATH="$GCC_DIR:$CLANG_DIR:$PATH"
-            
-            # تهيئة ملف الإعدادات الأساسي
-            make O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-none-linux-gnu- a04_defconfig
-            
-            # تفعيل FinaSU وخيارات KProbes الضرورية لنواة 4.19 وتليين القيود
-            scripts/config --file out/.config --enable CONFIG_KSU
-            scripts/config --file out/.config --enable CONFIG_KPROBES
-            scripts/config --file out/.config --enable CONFIG_HAVE_KPROBES
-            scripts/config --file out/.config --enable CONFIG_KPROBE_EVENTS
-            scripts/config --file out/.config --disable IKHEADERS
-            
-            # تحديث الإعدادات تلقائياً
-            make O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-none-linux-gnu- olddefconfig
-            
-            # بناء النواة مع تجاهل التحذيرات البرمجية
-            make O=out CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-none-linux-gnu- KCFLAGS="-Wno-error" -j$(nproc)
+    - name: Setup SUSFS Patches
+      run: |
+        echo "[-] Applying SUSFS patches..."
+        git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
+        chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
+        ./SUSFS/Patches/susfs_inline_hook_patches.sh
 
-        - name: Package Kernel with AnyKernel3
-          run: |
-            # استنساخ مستودع AnyKernel3
-            git clone https://github.com/Halk56855/AnyKernel3-a04.git anykernel
-            
-            # نسخ ملف النواة الناتج إلى مجلد AnyKernel3
-            cp out/arch/arm64/boot/Image.gz anykernel/
-            
-            # ضغط المجلد لإنتاج ملف ZIP النهائي القابل للتفليش
-            cd anykernel
-            zip -r9 ../FinaSU-Galaxy-A04-Flashable.zip *
-            cd ..
+    - name: Install Build Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          bc bison flex libssl-dev gcc g++ clang python3 \
+          libncurses5-dev ccache make git zip wget xz-utils \
+          device-tree-compiler libfdt-dev gcc-arm-linux-gnueabi cpio
 
-        - name: Upload Flashable ZIP
-          uses: actions/upload-artifact@v4
-          with:
-            name: FinaSU-Galaxy-A04-Flashable-ZIP
-            path: FinaSU-Galaxy-A04-Flashable.zip
+    - name: Prepare Toolchains Directories
+      run: |
+        mkdir -p toolchain/gcc
+        mkdir -p toolchain/clang
+
+    - name: Download GCC & Clang Toolchains
+      run: |
+        cd toolchain/gcc
+        wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
+          https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz || \
+        wget -q --show-progress \
+          https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
+        tar -xf gcc.tar.xz -C ./
+
+        cd ../clang
+        wget -q --show-progress \
+          https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/clang-r383902.tar.gz -O clang.tar.gz
+        mkdir -p host/linux-x86/clang-r383902
+        tar -xzf clang.tar.gz -C host/linux-x86/clang-r383902
+
+    - name: Set Environment Variables
+      run: |
+        CLANG_PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r383902/bin"
+        GCC_PATH="$(pwd)/toolchain/gcc/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu/bin"
+
+        echo "$CLANG_PATH" >> $GITHUB_PATH
+
+        echo "CROSS_COMPILE=$GCC_PATH/aarch64-none-linux-gnu-" >> $GITHUB_ENV
+        echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> $GITHUB_ENV
+        echo "CC=clang" >> $GITHUB_ENV
+        echo "LD=ld.lld" >> $GITHUB_ENV
+        echo "AR=llvm-ar" >> $GITHUB_ENV
+        echo "NM=llvm-nm" >> $GITHUB_ENV
+        echo "OBJCOPY=llvm-objcopy" >> $GITHUB_ENV
+        echo "OBJDUMP=llvm-objdump" >> $GITHUB_ENV
+        echo "STRIP=llvm-strip" >> $GITHUB_ENV
+        echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
+        echo "ARCH=arm64" >> $GITHUB_ENV
+
+        # إضافة خيارات إيقاف تحويل التحذيرات إلى أخطاء (Fix format/warning errors)
+        echo "KCFLAGS=-w -Wno-error=format -Wno-error -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
+        echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
+
+    - name: Configure and Compile Kernel
+      run: |
+        ROOT_CHOICE="${{ github.event.inputs.root_provider || inputs.root_provider }}"
+        VERSION_TAG="${{ github.event.inputs.version || inputs.version }}"
+
+        make -C $(pwd) O=$(pwd)/out touchdirt-a04_defconfig
+
+        if [ -f "arch/arm64/configs/touchdirt.config" ]; then
+          ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
+        fi
+
+        sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IK
