@@ -1,140 +1,148 @@
-.name: Build Multi-Variant Kernels with KernelSU-Next
+name: Build TouchDirt Kernel, ReFinaSU, Enforcing
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
 
 jobs:
-  build-kernel:
-    name: Build Kernel for ${{ matrix.target_system }}
-    runs-on: ubuntu-22.04
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target_system: "OneUI-6.1"
-            defconfig: "a04_defconfig"
-            zip_name: "Kernel-KernelSU-OneUI6.1.zip"
-          
-          - target_system: "LineageOS-GSI"
-            defconfig: "a04_00_defconfig"
-            zip_name: "Kernel-KernelSU-LineageOS-GSI.zip"
-
-          - target_system: "Rsuntk-A04"
-            defconfig: "rsuntk-a04_defconfig"
-            zip_name: "Kernel-KernelSU-Rsuntk-A04.zip"
-
-          - target_system: "TouchDirt-A04"
-            defconfig: "touchdirt-a04_defconfig"
-            zip_name: "Kernel-KernelSU-TouchDirt-A04.zip"
-
-          - target_system: "TouchDirt-Permissive"
-            defconfig: "a04_defconfig"
-            extra_config: "touchdirt-permissive-config"
-            zip_name: "Kernel-KernelSU-TouchDirt-Permissive.zip"
-
-          - target_system: "TouchDirt-Config"
-            defconfig: "a04_defconfig"
-            extra_config: "touchdirt.config"
-            zip_name: "Kernel-KernelSU-TouchDirt-Config.zip"
+  build:
+    runs-on: ubuntu-24.04
 
     steps:
-      - name: Checkout Kernel Source
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+    - name: Checkout source
+      uses: actions/checkout@v4
 
-      - name: Setup Build Environment
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libncurses5-dev libncursesw5-dev libglib2.0-dev libpixman-1-dev python3 libelf-dev clang lld llvm wget tar git
+    - name: Integrating ReFinaSU / ReSukiSU
+      run: |
+        echo "[-] Cloning ReFinaSU / ReSukiSU repo..."
+        git clone -b master https://github.com/Halk56855/ReFinaSU.git KernelSU || git clone -b main https://github.com/ReSukiSU/ReSukiSU.git KernelSU
 
-      - name: Setup Official ARM GNU Toolchain 14.2
-        run: |
-          echo "Downloading ARM GNU Toolchain 14.2..."
-          wget -q https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz
-          
-          echo "Extracting toolchain..."
-          tar -xf arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz
-          
-          echo "Moving to toolchain directory..."
-          mv arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu $HOME/toolchain
-          
-          echo "Adding to PATH..."
-          echo "$HOME/toolchain/bin" >> $GITHUB_PATH
+        echo "[-] Setup ReFinaSU / ReSukiSU..."
+        chmod +x ./KernelSU/kernel/setup.sh
+        ./KernelSU/kernel/setup.sh
 
-      - name: Integrate KernelSU-Next (Official Setup Script)
-        run: |
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+    - name: Apply SUSFS Patches (No-GKI Kernel 5.4)
+      run: |
+        git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
+        chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
+        ./SUSFS/Patches/susfs_inline_hook_patches.sh $(pwd)
 
-      - name: Configure and Compile Kernel
-        run: |
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export CC=clang
-          export CROSS_COMPILE=aarch64-none-linux-gnu-
-          export CLANG_TRIPLE=aarch64-linux-gnu-
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          bc bison flex libssl-dev gcc g++ clang python3 \
+          libncurses5-dev ccache make git zip wget xz-utils \
+          device-tree-compiler libfdt-dev gcc-arm-linux-gnueabi cpio
 
-          # 1. تطبيق ملف الـ defconfig الأساسي أولاً
-          make O=out ${{ matrix.defconfig }}
+    - name: Prepare Toolchains directories
+      run: |
+        mkdir -p toolchain/gcc
+        mkdir -p toolchain/clang
 
-          # 2. دمج ملف الإعدادات الجزئي الإضافي بأمان إذا كان موجوداً
-          if [ -n "${{ matrix.extra_config }}" ]; then
-            CONFIG_PATH="arch/arm64/configs/${{ matrix.extra_config }}"
-            if [ -f "$CONFIG_PATH" ]; then
-              echo "Merging extra config: ${{ matrix.extra_config }}"
-              cat "$CONFIG_PATH" >> out/.config
-            fi
-          fi
+    - name: Download GCC & Clang Toolchain
+      run: |
+        cd toolchain/gcc
+        wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
+          https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz || \
+        wget -q --show-progress \
+          https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
+        tar -xf gcc.tar.xz -C ./
 
-          # 3. تعطيل خيارات الـ WERROR والـ IKHEADERS التي تسبب فشل البناء
-          scripts/config --file out/.config \
-            -d CONFIG_WERROR \
-            -d CONFIG_CC_WERROR \
-            -d CONFIG_IKHEADERS
+        cd ../clang
+        wget -q --show-progress \
+          https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/clang-r383902.tar.gz -O clang.tar.gz
+        mkdir -p host/linux-x86/clang-r383902
+        tar -xzf clang.tar.gz -C host/linux-x86/clang-r383902
 
-          # 4. تفعيل خيارات KernelSU-Next و Kprobes إجبارياً
-          scripts/config --file out/.config \
-            -e CONFIG_KSU \
-            -e CONFIG_KSU_NEXT \
-            -e CONFIG_KPROBES \
-            -e CONFIG_HAVE_KPROBES \
-            -e CONFIG_KPROBE_EVENTS \
-            -e CONFIG_KALLSYMS \
-            -e CONFIG_KALLSYMS_ALL
+    - name: Set Environment Variables
+      run: |
+        CLANG_PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r383902/bin"
+        GCC_PATH="$(pwd)/toolchain/gcc/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu/bin"
 
-          # 5. تحديث الإعدادات والتوافقية
-          make O=out olddefconfig
+        echo "$CLANG_PATH" >> $GITHUB_PATH
 
-          # 6. فرض قيم الـ Built-in مباشرة لـ KernelSU لمنع أي تلاعب أو حذف
-          echo "CONFIG_KSU=y" >> out/.config
-          echo "CONFIG_KSU_NEXT=y" >> out/.config
+        echo "CROSS_COMPILE=$GCC_PATH/aarch64-none-linux-gnu-" >> $GITHUB_ENV
+        echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> $GITHUB_ENV
+        echo "CC=clang" >> $GITHUB_ENV
+        echo "LD=ld.lld" >> $GITHUB_ENV
+        echo "AR=llvm-ar" >> $GITHUB_ENV
+        echo "NM=llvm-nm" >> $GITHUB_ENV
+        echo "OBJCOPY=llvm-objcopy" >> $GITHUB_ENV
+        echo "OBJDUMP=llvm-objdump" >> $GITHUB_ENV
+        echo "STRIP=llvm-strip" >> $GITHUB_ENV
+        echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
+        echo "ARCH=arm64" >> $GITHUB_ENV
+        # إضافة خيارات لمنع أخطاء التوافق مع النواة القديمة 5.4 ومترجم Clang الحديث
+        echo "KCFLAGS=-w -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=strict-prototypes" >> $GITHUB_ENV
+        echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
 
-          # 7. تحديث نهائي للتوافقية بعد الحقن المباشر
-          make O=out olddefconfig
+    - name: Configure and Compile Kernel
+      run: |
+        make -C $(pwd) O=$(pwd)/out touchdirt-a04_defconfig
 
-          # 8. بدء تجميع النواة بنجاح وتجاهل التحذيرات بالكامل
-          make -j$(nproc --all) O=out KCFLAGS="-w"
+        if [ -f "arch/arm64/configs/touchdirt.config" ]; then
+          ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
+        fi
 
-      - name: Pack Kernel with AnyKernel3
-        run: |
-          git clone https://github.com/osm0sis/AnyKernel3 AnyKernel3
-          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
-            cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz-dtb
-          elif [ -f out/arch/arm64/boot/Image.gz ]; then
-            cp out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
-          elif [ -f out/arch/arm64/boot/Image ]; then
-            cp out/arch/arm64/boot/Image AnyKernel3/Image
-          fi
-          
-          cd AnyKernel3
-          zip -r9 "../${{ matrix.zip_name }}" * -x .git README.md
+        # فرض تفعيل خيارات ReFinaSU و SUSFS المطلوبة لنواة 5.4 No-GKI مباشرة في الـ .config
+        echo "CONFIG_KPROBES=y" >> out/.config
+        echo "CONFIG_HAVE_KPROBES=y" >> out/.config
+        echo "CONFIG_KSU=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> out/.config
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kernel-${{ matrix.target_system }}
-          path: ${{ matrix.zip_name }}
+        sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
+
+        if [ "${{ github.event_name }}" = "workflow_call" ]; then
+            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-ReFinaSU-${{ inputs.version }}\"/" out/.config
+        else
+            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-ReFinaSU-BETA\"/" out/.config
+        fi
+
+        make -C $(pwd) O=$(pwd)/out olddefconfig
+
+        make -C $(pwd) O=$(pwd)/out prepare
+        make -C $(pwd) O=$(pwd)/out scripts
+        make -C $(pwd) O=$(pwd)/out security/
+
+        make -C $(pwd) O=$(pwd)/out -j$(nproc) || make -C $(pwd) O=$(pwd)/out -j1
+
+    - name: Get kernel version
+      id: version
+      run: |
+        VERSION="${{ inputs.version }}"
+        if [ -z "$VERSION" ]; then
+          VERSION="BETA"
+        fi
+        echo "VERSION=$VERSION"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+    - name: Package AnyKernel3
+      run: |
+        DATE=$(date -u +"%Y-%m-%d")
+
+        git clone https://github.com/DaniTheSillyFem/AnyKernel3 --depth 1
+
+        cp out/arch/arm64/boot/Image AnyKernel3/Image
+
+        cd AnyKernel3
+        zip -r9 "../TouchDirt-ReFinaSU-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
+
+    - name: Upload AnyKernel3 ZIP
+      uses: actions/upload-artifact@v4
+      with:
+        name: TouchDirt-ReFinaSU-Enforcing
+        path: TouchDirt-*.zip
