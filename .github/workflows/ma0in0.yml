@@ -1,30 +1,15 @@
-name: Build TouchDirt Kernel - Non-GKI Samsung A04
+Name: Build TouchDirt Kernel, ReSukiSU, Enforcing
 
 on:
   workflow_dispatch:
     inputs:
-      root_provider:
-        description: 'اختر مشروَع الروت (للنواة 4.19 يفضل KernelSU الأصلي أو SukiSU المتوافق)'
-        required: true
-        default: 'KernelSU'
-        type: choice
-        options:
-        - 'KernelSU'
-        - 'SukiSU-Ultra'
-        - 'KernelSU-Next'
-        - 'FinaSU'
       version:
-        description: 'رقم الإصدار (مثال: v1.0)'
-        required: false
+        description: 'Kernel Version / Tag'
+        required: true
         default: 'BETA'
         type: string
-
   workflow_call:
     inputs:
-      root_provider:
-        required: false
-        default: 'KernelSU'
-        type: string
       version:
         required: true
         type: string
@@ -34,60 +19,49 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-    - name: Checkout Source Code
+    - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Integrate Root Engine for Non-GKI 4.19
+    - name: Integrating ReSukiSU
       run: |
-        ROOT_CHOICE="${{ github.event.inputs.root_provider || inputs.root_provider }}"
-        echo "=========================================="
-        echo "[-] Selected Root Engine: $ROOT_CHOICE"
-        echo "=========================================="
-
-        case "$ROOT_CHOICE" in
-          "KernelSU")
-            echo "[-] Cloning Official KernelSU (Stable for 4.19)..."
-            git clone -b main https://github.com/tiann/KernelSU.git KernelSU
-            ;;
-          "SukiSU-Ultra")
-            echo "[-] Cloning SukiSU-Ultra..."
-            git clone -b main https://github.com/SukiSU-Ultra/SukiSU-Ultra.git KernelSU
-            ;;
-          "KernelSU-Next")
-            echo "[-] Cloning KernelSU Next..."
-            git clone -b next https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU
-            ;;
-          "FinaSU")
-            echo "[-] Cloning FinaSU..."
-            git clone -b main https://github.com/LyraVoid/FinaSU.git KernelSU
-            ;;
-          *)
-            git clone -b main https://github.com/tiann/KernelSU.git KernelSU
-            ;;
-        esac
-
-        echo "[-] Running KernelSU Setup script in 'builtin' mode..."
+        echo "[-] Cloning and setting up ReSukiSU..."
+        git clone -b main https://github.com/ReSukiSU/ReSukiSU.git KernelSU
         chmod +x ./KernelSU/kernel/setup.sh
-        ./KernelSU/kernel/setup.sh builtin
+        ./KernelSU/kernel/setup.sh
 
-    - name: Setup SUSFS Patches
+    - name: SUSFS
       run: |
-        echo "[-] Applying SUSFS patches..."
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
 
-    - name: Fix Missing static_call.h for Kernel 4.19
+    - name: Apply GPU Overclock (850 MHz) safely
       run: |
-        echo "[-] Creating compatibility stub for static_call.h..."
-        mkdir -p include/linux
-        if [ ! -f "include/linux/static_call.h" ]; then
-          echo "#ifndef _LINUX_STATIC_CALL_H" > include/linux/static_call.h
-          echo "#define _LINUX_STATIC_CALL_H" >> include/linux/static_call.h
-          echo "#endif" >> include/linux/static_call.h
-        fi
+        echo "[-] Safely updating GPU frequency target to 850MHz..."
+        python3 -c '
+        import os, re
+        
+        for root, dirs, files in os.walk("arch/arm64/boot/dts"):
+            for f in files:
+                if f.endswith((".dts", ".dtsi")):
+                    fp = os.path.join(root, f)
+                    try:
+                        with open(fp, "r", errors="ignore") as fh:
+                            content = fh.read()
+                        
+                        # يضمن استهداف عقد كارت الشاشة (GPU/Mali) فقط لتجنب تخريب تعريفات eMMC/SD
+                        lower_content = content.lower()
+                        if "mali" in lower_content or "gpu" in lower_content or "kgsl" in lower_content:
+                            if "max-frequency" in content:
+                                content = re.sub(r"max-frequency\s*=\s*<[^>]+>;", "max-frequency = <850000000>;", content)
+                                with open(fp, "w") as fh:
+                                    fh.write(content)
+                                print(f"[+] Successfully updated GPU clock in: {fp}")
+                    except Exception as e:
+                        pass
+        '
 
-    - name: Install Build Dependencies
+    - name: Install build dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
@@ -95,18 +69,18 @@ jobs:
           libncurses5-dev ccache make git zip wget xz-utils \
           device-tree-compiler libfdt-dev gcc-arm-linux-gnueabi cpio
 
-    - name: Prepare Toolchains Directories
+    - name: Prepare Toolchains directories
       run: |
         mkdir -p toolchain/gcc
         mkdir -p toolchain/clang
 
-    - name: Download GCC & Clang Toolchains
+    - name: Download GCC & Clang Toolchain
       run: |
         cd toolchain/gcc
         wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
-          https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz || \
+          https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz || \
         wget -q --show-progress \
-          https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
+          https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
         tar -xf gcc.tar.xz -C ./
 
         cd ../clang
@@ -133,29 +107,31 @@ jobs:
         echo "STRIP=llvm-strip" >> $GITHUB_ENV
         echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
         echo "ARCH=arm64" >> $GITHUB_ENV
-
-        echo "KCFLAGS=-w -Wno-error=format -Wno-error -I$(pwd)/include -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
+        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
 
     - name: Configure and Compile Kernel
       run: |
-        ROOT_CHOICE="${{ github.event.inputs.root_provider || inputs.root_provider }}"
-        VERSION_TAG="${{ github.event.inputs.version || inputs.version }}"
-
         make -C $(pwd) O=$(pwd)/out touchdirt-a04_defconfig
 
         if [ -f "arch/arm64/configs/touchdirt.config" ]; then
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
-        # --- حقن خيارات الروت وإجبار تفعيلها لنواة 4.19 ---
-        echo "CONFIG_KSU=y" >> $(pwd)/out/.config
-        echo "CONFIG_KSU_TAMPER_SYS_PROC_ATTR=y" >> $(pwd)/out/.config
-        echo "CONFIG_KALLSYMS=y" >> $(pwd)/out/.config
-        echo "CONFIG_KALLSYMS_ALL=y" >> $(pwd)/out/.config
+        grep '^CONFIG_LOCALVERSION=' out/.config
 
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
-        sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-${ROOT_CHOICE}-${VERSION_TAG}\"/" out/.config
+
+        if [ "${{ github.event_name }}" = "workflow_call" ]; then
+            LOCAL_VER="${{ inputs.version }}"
+        else
+            LOCAL_VER="${{ github.event.inputs.version }}"
+            if [ -z "$LOCAL_VER" ]; then
+              LOCAL_VER="BETA"
+            fi
+        fi
+
+        sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-ReSukiSU-$LOCAL_VER\"/" out/.config
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
@@ -165,10 +141,22 @@ jobs:
 
         make -C $(pwd) O=$(pwd)/out -j$(nproc) || make -C $(pwd) O=$(pwd)/out -j1
 
+    - name: Get kernel version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_call" ]; then
+          VERSION="${{ inputs.version }}"
+        else
+          VERSION="${{ github.event.inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION="BETA"
+          fi
+        fi
+        echo "VERSION=$VERSION"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
     - name: Package AnyKernel3
       run: |
-        ROOT_CPU="${{ github.event.inputs.root_provider || inputs.root_provider }}"
-        VERSION_TAG="${{ github.event.inputs.version || inputs.version }}"
         DATE=$(date -u +"%Y-%m-%d")
 
         git clone https://github.com/DaniTheSillyFem/AnyKernel3 --depth 1
@@ -176,10 +164,10 @@ jobs:
         cp out/arch/arm64/boot/Image AnyKernel3/Image
 
         cd AnyKernel3
-        zip -r9 "../TouchDirt-${ROOT_CPU}-${VERSION_TAG}-${DATE}.zip" . -x ".git/*"
+        zip -r9 "../TouchDirt-ReSukiSU-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
 
     - name: Upload AnyKernel3 ZIP
       uses: actions/upload-artifact@v4
       with:
-        name: TouchDirt-${{ github.event.inputs.root_provider || inputs.root_provider }}-Enforcing
+        name: TouchDirt-ReSukiSU-Enforcing
         path: TouchDirt-*.zip
