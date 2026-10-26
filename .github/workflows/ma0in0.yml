@@ -25,17 +25,17 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-    - name: Fix Compatibility for Kernel 4.19 (Remove MODULE_IMPORT_NS)
+    - name: Fix Compatibility for Kernel 4.19 (Remove static_assert & MODULE_IMPORT_NS)
       run: |
-        echo "[-] Directly removing MODULE_IMPORT_NS from drivers/kernelsu/core/init.c..."
-        sed -i '/MODULE_IMPORT_NS/d' drivers/kernelsu/core/init.c || true
-        
-        echo "[-] Searching and removing MODULE_IMPORT_NS across all KernelSU/FinaSU files..."
+        echo "[-] Removing static_assert and MODULE_IMPORT_NS across all files..."
+        find -L drivers/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i '/static_assert/d' {} +
         find -L drivers/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i '/MODULE_IMPORT_NS/d' {} +
         if [ -d "FinaSU" ]; then
+          find FinaSU/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i '/static_assert/d' {} +
           find FinaSU/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i '/MODULE_IMPORT_NS/d' {} +
         fi
         if [ -d "KernelSU" ]; then
+          find KernelSU/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i '/static_assert/d' {} +
           find KernelSU/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i '/MODULE_IMPORT_NS/d' {} +
         fi
 
