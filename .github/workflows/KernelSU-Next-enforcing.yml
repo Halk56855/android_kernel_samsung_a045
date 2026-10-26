@@ -1,4 +1,4 @@
-name: Build TouchDirt Kernel, ReFinaSU, Enforcing
+name: Build TouchDirt Kernel, ReSukiSU, Enforcing
 
 on:
   workflow_dispatch:
@@ -18,14 +18,19 @@ jobs:
 
     - name: Integrating ReFinaSU / ReSukiSU
       run: |
-        echo "[-] Cloning ReFinaSU / ReSukiSU repo..."
+        echo "[-] Cloning ReSukiSU / ReSukiSU repo..."
         git clone -b master https://github.com/Halk56855/ReFinaSU.git KernelSU || git clone -b main https://github.com/ReSukiSU/ReSukiSU.git KernelSU
 
-        echo "[-] Setup ReFinaSU / ReSukiSU..."
+        echo "[-] Setup ReSukiSU / ReSukiSU..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-    - name: Apply SUSFS Patches (No-GKI Kernel 5.4)
+    - name: Fix Compatibility for Kernel 4.19
+      run: |
+        echo "[-] Removing MODULE_IMPORT_NS from KernelSU source (incompatible with Kernel 4.19)..."
+        find drivers/kernelsu -type f -name "*.c" -exec sed -i '/MODULE_IMPORT_NS/d' {} +
+
+    - name: Apply SUSFS Patches (No-GKI Kernel 4.19)
       run: |
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
@@ -77,7 +82,6 @@ jobs:
         echo "STRIP=llvm-strip" >> $GITHUB_ENV
         echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
         echo "ARCH=arm64" >> $GITHUB_ENV
-        # إضافة خيارات لمنع أخطاء التوافق مع النواة القديمة 5.4 ومترجم Clang الحديث
         echo "KCFLAGS=-w -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=strict-prototypes" >> $GITHUB_ENV
         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
 
@@ -89,7 +93,7 @@ jobs:
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
-        # فرض تفعيل خيارات ReFinaSU و SUSFS المطلوبة لنواة 5.4 No-GKI مباشرة في الـ .config
+        # فرض تفعيل خيارات النواة المطلوبة لـ Kernel 4.19 No-GKI
         echo "CONFIG_KPROBES=y" >> out/.config
         echo "CONFIG_HAVE_KPROBES=y" >> out/.config
         echo "CONFIG_KSU=y" >> out/.config
@@ -107,9 +111,9 @@ jobs:
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
 
         if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-ReFinaSU-${{ inputs.version }}\"/" out/.config
+            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-ReSukiSU-${{ inputs.version }}\"/" out/.config
         else
-            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-ReFinaSU-BETA\"/" out/.config
+            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-ReSukiSU-BETA\"/" out/.config
         fi
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
@@ -139,10 +143,10 @@ jobs:
         cp out/arch/arm64/boot/Image AnyKernel3/Image
 
         cd AnyKernel3
-        zip -r9 "../TouchDirt-ReFinaSU-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
+        zip -r9 "../TouchDirt-ReSukiSU-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
 
     - name: Upload AnyKernel3 ZIP
       uses: actions/upload-artifact@v4
       with:
-        name: TouchDirt-ReFinaSU-Enforcing
+        name: TouchDirt-ReSukiSU-Enforcing
         path: TouchDirt-*.zip
