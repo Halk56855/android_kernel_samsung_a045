@@ -25,10 +25,10 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-    - name: Fix Compatibility for Kernel 4.19
+    - name: Fix Compatibility for Kernel 4.19 (Remove MODULE_IMPORT_NS)
       run: |
-        echo "[-] Removing MODULE_IMPORT_NS from KernelSU source (incompatible with Kernel 4.19)..."
-        find drivers/kernelsu -type f -name "*.c" -exec sed -i '/MODULE_IMPORT_NS/d' {} +
+        echo "[-] Searching and removing MODULE_IMPORT_NS from drivers/kernelsu and drivers/FinaSU..."
+        find drivers/ -type f -name "*.c" -exec sed -i '/MODULE_IMPORT_NS/d' {} +
 
     - name: Apply SUSFS Patches (No-GKI Kernel 4.19)
       run: |
@@ -93,7 +93,6 @@ jobs:
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
-        # فرض تفعيل خيارات النواة المطلوبة لـ Kernel 4.19 No-GKI
         echo "CONFIG_KPROBES=y" >> out/.config
         echo "CONFIG_HAVE_KPROBES=y" >> out/.config
         echo "CONFIG_KSU=y" >> out/.config
