@@ -1,4 +1,4 @@
-name: Build TouchDirt Kernel, ReSukiSU, Enforcing
+Name: Build TouchDirt Kernel, ReSukiSU, Enforcing
 
 on:
   workflow_dispatch:
@@ -35,9 +35,9 @@ jobs:
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
 
-    - name: Apply GPU Overclock (850 MHz) safely
+    - name: Apply GPU Overclock (1000 MHz) safely
       run: |
-        echo "[-] Safely updating GPU frequency target to 850MHz..."
+        echo "[-] Safely updating GPU frequency target to 1000MHz..."
         python3 -c '
         import os, re
         
@@ -49,14 +49,14 @@ jobs:
                         with open(fp, "r", errors="ignore") as fh:
                             content = fh.read()
                         
-                        # يضمن استهداف عقد كارت الشاشة (GPU/Mali) فقط لتجنب تخريب تعريفات eMMC/SD
+                        # استهداف عقد كارت الشاشة (GPU/Mali) فقط لتجنب تخريب تعريفات الذاكرة
                         lower_content = content.lower()
                         if "mali" in lower_content or "gpu" in lower_content or "kgsl" in lower_content:
                             if "max-frequency" in content:
-                                content = re.sub(r"max-frequency\s*=\s*<[^>]+>;", "max-frequency = <850000000>;", content)
+                                content = re.sub(r"max-frequency\s*=\s*<[^>]+>;", "max-frequency = <1000000000>;", content)
                                 with open(fp, "w") as fh:
                                     fh.write(content)
-                                print(f"[+] Successfully updated GPU clock in: {fp}")
+                                print(f"[+] Successfully updated GPU clock to 1000MHz in: {fp}")
                     except Exception as e:
                         pass
         '
