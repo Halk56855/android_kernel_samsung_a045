@@ -2,12 +2,6 @@ name: Build TouchDirt Kernel, ReSukiSU, Enforcing
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Kernel Version / Tag'
-        required: true
-        default: 'BETA'
-        type: string
   workflow_call:
     inputs:
       version:
@@ -22,44 +16,25 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Integrating ReSukiSU
+    - name: Integrating ReFinaSU / ReSukiSU
       run: |
-        echo "[-] Cloning and setting up ReSukiSU..."
-        git clone -b main https://github.com/ReSukiSU/ReSukiSU.git KernelSU
+        echo "[-] Cloning ReSukiSU / ReSukiSU repo..."
+        git clone -b master https://github.com/Halk56855/ReFinaSU.git KernelSU || git clone -b main https://github.com/ReSukiSU/ReSukiSU.git KernelSU
+
+        echo "[-] Setup ReSukiSU / ReSukiSU..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-    - name: SUSFS
+    - name: Fix Compatibility for Kernel 4.19
+      run: |
+        echo "[-] Removing MODULE_IMPORT_NS from KernelSU source (incompatible with Kernel 4.19)..."
+        find drivers/kernelsu -type f -name "*.c" -exec sed -i '/MODULE_IMPORT_NS/d' {} +
+
+    - name: Apply SUSFS Patches (No-GKI Kernel 4.19)
       run: |
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
-        ./SUSFS/Patches/susfs_inline_hook_patches.sh
-
-    - name: Apply GPU Overclock (1000 MHz) safely
-      run: |
-        echo "[-] Safely updating GPU frequency target to 1000MHz..."
-        python3 -c '
-        import os, re
-        
-        for root, dirs, files in os.walk("arch/arm64/boot/dts"):
-            for f in files:
-                if f.endswith((".dts", ".dtsi")):
-                    fp = os.path.join(root, f)
-                    try:
-                        with open(fp, "r", errors="ignore") as fh:
-                            content = fh.read()
-                        
-                        # استهداف عقد كارت الشاشة (GPU/Mali) فقط لتجنب تخريب تعريفات الذاكرة
-                        lower_content = content.lower()
-                        if "mali" in lower_content or "gpu" in lower_content or "kgsl" in lower_content:
-                            if "max-frequency" in content:
-                                content = re.sub(r"max-frequency\s*=\s*<[^>]+>;", "max-frequency = <1000000000>;", content)
-                                with open(fp, "w") as fh:
-                                    fh.write(content)
-                                print(f"[+] Successfully updated GPU clock to 1000MHz in: {fp}")
-                    except Exception as e:
-                        pass
-        '
+        ./SUSFS/Patches/susfs_inline_hook_patches.sh $(pwd)
 
     - name: Install build dependencies
       run: |
@@ -78,9 +53,9 @@ jobs:
       run: |
         cd toolchain/gcc
         wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
-          https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz || \
+          https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz || \
         wget -q --show-progress \
-          https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
+          https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
         tar -xf gcc.tar.xz -C ./
 
         cd ../clang
@@ -107,7 +82,7 @@ jobs:
         echo "STRIP=llvm-strip" >> $GITHUB_ENV
         echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
         echo "ARCH=arm64" >> $GITHUB_ENV
-        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
+        echo "KCFLAGS=-w -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=strict-prototypes" >> $GITHUB_ENV
         echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
 
     - name: Configure and Compile Kernel
@@ -118,20 +93,28 @@ jobs:
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
-        grep '^CONFIG_LOCALVERSION=' out/.config
+        # فرض تفعيل خيارات النواة المطلوبة لـ Kernel 4.19 No-GKI
+        echo "CONFIG_KPROBES=y" >> out/.config
+        echo "CONFIG_HAVE_KPROBES=y" >> out/.config
+        echo "CONFIG_KSU=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> out/.config
+        echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> out/.config
 
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
 
         if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            LOCAL_VER="${{ inputs.version }}"
+            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-ReSukiSU-${{ inputs.version }}\"/" out/.config
         else
-            LOCAL_VER="${{ github.event.inputs.version }}"
-            if [ -z "$LOCAL_VER" ]; then
-              LOCAL_VER="BETA"
-            fi
+            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-ReSukiSU-BETA\"/" out/.config
         fi
-
-        sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-ReSukiSU-$LOCAL_VER\"/" out/.config
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
@@ -144,13 +127,9 @@ jobs:
     - name: Get kernel version
       id: version
       run: |
-        if [ "${{ github.event_name }}" = "workflow_call" ]; then
-          VERSION="${{ inputs.version }}"
-        else
-          VERSION="${{ github.event.inputs.version }}"
-          if [ -z "$VERSION" ]; then
-            VERSION="BETA"
-          fi
+        VERSION="${{ inputs.version }}"
+        if [ -z "$VERSION" ]; then
+          VERSION="BETA"
         fi
         echo "VERSION=$VERSION"
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
