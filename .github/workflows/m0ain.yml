@@ -30,7 +30,13 @@ jobs:
         echo "[-] Setup ReSukiSU-Ultima..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
-        # تم حذف rm -rf KernelSU هنا لكي لا ينكسر الرابط الرمزي (Symlink)
+
+    - name: Fix Compatibility for Kernel 4.19 (ReSukiSU-Ultima)
+      run: |
+        echo "[-] Adding compatibility patch for ktime_get_boottime_ns..."
+        if [ -f "drivers/kernelsu/feature/sentinel.c" ]; then
+          sed -i '1i #ifndef ktime_get_boottime_ns\n#define ktime_get_boottime_ns() ktime_to_ns(ktime_get_boottime())\n#endif' drivers/kernelsu/feature/sentinel.c
+        fi
 
     - name: SUSFS
       run: |
@@ -92,7 +98,10 @@ jobs:
         make -C $(pwd) O=$(pwd)/out touchdirt-a04_defconfig
 
         if [ -f "arch/arm64/configs/touchdirt.config" ]; then
+          echo "CONFIG_KSU_SUCOMPAT=y" >> arch/arm64/configs/touchdirt.config
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
+        else
+          echo "CONFIG_KSU_SUCOMPAT=y" >> out/.config
         fi
 
         grep '^CONFIG_LOCALVERSION=' out/.config
