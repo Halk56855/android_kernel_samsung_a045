@@ -30,7 +30,7 @@ jobs:
         echo "[-] Setup ReSukiSU-Ultima..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
-        rm -rf KernelSU
+        # تم حذف rm -rf KernelSU هنا لكي لا ينكسر الرابط الرمزي (Symlink)
 
     - name: SUSFS
       run: |
