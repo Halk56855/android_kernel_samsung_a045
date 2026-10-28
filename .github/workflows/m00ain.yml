@@ -22,7 +22,7 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Integrating SakiSU Manually & Automatically
+    - name: Integrating SakiSU & Forcing Compilation
       run: |
         echo "[-] Cloning SakiSU repo..."
         git clone -b main https://github.com/XingChenRS/SakiSU.git KernelSU
@@ -31,19 +31,24 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Ensuring KernelSU is properly linked in drivers/"
-        # Fallback manual check to guarantee drivers/kernelsu exists and is referenced
+        echo "[-] Ensuring KernelSU is linked and forced in Makefile..."
         if [ ! -d "drivers/kernelsu" ]; then
           ln -sf "$(pwd)/KernelSU/kernel" drivers/kernelsu
         fi
 
-        # Ensure Kconfig and Makefile include kernelsu
+        # اجبار نظام بناء النواة على ترجمة مجلد kernelsu
         if ! grep -q "kernelsu" drivers/Makefile; then
           echo "obj-y += kernelsu/" >> drivers/Makefile
         fi
-        
-        if ! grep -q "drivers/kernelsu/Kconfig" drivers/Kconfig; then
-          sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
+
+        # إضافة خيارات KSU إلى ملف التكوين المخصص لضمان عدم حذفها
+        mkdir -p arch/arm64/configs
+        if [ -f "arch/arm64/configs/touchdirt.config" ]; then
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/touchdirt.config
+          echo "CONFIG_KSU_SUCOMPAT=y" >> arch/arm64/configs/touchdirt.config
+        else
+          echo "CONFIG_KSU=y" > arch/arm64/configs/touchdirt.config
+          echo "CONFIG_KSU_SUCOMPAT=y" >> arch/arm64/configs/touchdirt.config
         fi
 
     - name: Install build dependencies
@@ -102,10 +107,6 @@ jobs:
         if [ -f "arch/arm64/configs/touchdirt.config" ]; then
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
-
-        # Force enable KSU options in the config output
-        echo "CONFIG_KSU=y" >> out/.config
-        echo "CONFIG_KSU_SUCOMPAT=y" >> out/.config
 
         grep '^CONFIG_LOCALVERSION=' out/.config
 
