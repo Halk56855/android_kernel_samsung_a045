@@ -27,12 +27,12 @@ jobs:
         echo "[-] Cloning ReSukiSU-Ultima repo..."
         git clone -b main https://github.com/Halk56855/ReSukiSU-Ultima.git KernelSU
 
-        echo "[-] Removing exec and sucompat patches for Kernel 4.19 compatibility..."
-        find ./KernelSU -type f \( -name "*exec*" -o -name "*sucompat*" \) -exec rm -f {} +
-
         echo "[-] Setup ReSukiSU-Ultima..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
+
+        echo "[-] Reverting fs/exec.c to pristine state to remove incompatible sucompat hooks..."
+        git checkout fs/exec.c || true
 
     - name: Fix Compatibility for Kernel 4.19 (Sentinel)
       run: |
