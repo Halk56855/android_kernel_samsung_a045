@@ -1,4 +1,4 @@
-Name: Build TouchDirt Kernel, ReSukiSU-Ultima, Enforcing
+name: Build TouchDirt Kernel, ReSukiSU-Ultima, Enforcing
 
 on:
   workflow_dispatch:
@@ -51,12 +51,11 @@ jobs:
 
     - name: Fix fs/exec.c Syntax Error & Clean Hooks for Kernel 4.19
       run: |
-        python3 -c '
+        cat << 'EOF' > patch_exec.py
         filepath = "fs/exec.c"
         with open(filepath, "r") as f:
             content = f.read()
 
-        # إزالة الأسطر التالفة أو المكسورة إن وجدت نتيجة الباتشات الخاطئة
         lines = content.splitlines()
         clean_lines = []
         for line in lines:
@@ -65,7 +64,6 @@ jobs:
             clean_lines.append(line)
         content = "\n".join(clean_lines)
 
-        # حقن الهوكس بشكل نظيف وسليم تماماً داخل دالة do_execveat_common
         target = "static int do_execveat_common(int fd, struct filename *filename,"
         replacement = """static int do_execveat_common(int fd, struct filename *filename,
 				struct user_arg_ptr argv,
@@ -89,7 +87,8 @@ jobs:
         
         with open(filepath, "w") as f:
             f.write(content)
-        '
+        EOF
+        python3 patch_exec.py
 
     - name: Install build dependencies
       run: |
