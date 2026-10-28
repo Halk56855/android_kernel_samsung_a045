@@ -31,11 +31,16 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-    - name: Fix Compatibility for Kernel 4.19
+    - name: Fix Compatibility and Strip Sucompat Hooks for Kernel 4.19
       run: |
         echo "[-] Adding compatibility patch for ktime_get_boottime_ns..."
         if [ -f "drivers/kernelsu/feature/sentinel.c" ]; then
           sed -i '1i #ifndef ktime_get_boottime_ns\n#define ktime_get_boottime_ns() ktime_to_ns(ktime_get_boottime())\n#endif' drivers/kernelsu/feature/sentinel.c
+        fi
+
+        echo "[-] Removing undefined sucompat hooks from fs/exec.c..."
+        if [ -f "fs/exec.c" ]; then
+          sed -i '/ksu_handle_post_execveat_sucompat/d' fs/exec.c
         fi
 
     - name: SUSFS
@@ -101,10 +106,6 @@ jobs:
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
-        # ضبط إعدادات الكيرنل وتعطيل sucompat لتجنب خطأ الـ Linker
-        echo "CONFIG_KSU=y" >> out/.config
-        echo "CONFIG_KSU_SUCOMPAT=n" >> out/.config
-
         grep '^CONFIG_LOCALVERSION=' out/.config
 
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
@@ -117,10 +118,6 @@ jobs:
         sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-ReSukiSU-Ultima-${VERSION_VAL}\"/" out/.config
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
-
-        # تأكيد التعطيل بعد olddefconfig
-        echo "CONFIG_KSU=y" >> out/.config
-        echo "CONFIG_KSU_SUCOMPAT=n" >> out/.config
 
         make -C $(pwd) O=$(pwd)/out prepare
         make -C $(pwd) O=$(pwd)/out scripts
