@@ -27,6 +27,13 @@ jobs:
         echo "[-] Cloning ReSukiSU-Ultima repo..."
         git clone -b main https://github.com/Halk56855/ReSukiSU-Ultima.git KernelSU
 
+        # حل مشكلة ظهور اللاحقة -dirty لكي يقبل التطبيق المدير الرسمي
+        cd KernelSU
+        git config user.name "Builder"
+        git config user.email "builder@host.com"
+        git commit --allow-empty -m "Clean build state" || true
+        cd ..
+
         echo "[-] Setup ReSukiSU-Ultima..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
