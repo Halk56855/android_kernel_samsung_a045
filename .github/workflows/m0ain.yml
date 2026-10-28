@@ -31,11 +31,17 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-    - name: Fix Compatibility for Kernel 4.19 (ReSukiSU-Ultima)
+    - name: Fix Compatibility and Kconfig for Kernel 4.19
       run: |
         echo "[-] Adding compatibility patch for ktime_get_boottime_ns..."
         if [ -f "drivers/kernelsu/feature/sentinel.c" ]; then
           sed -i '1i #ifndef ktime_get_boottime_ns\n#define ktime_get_boottime_ns() ktime_to_ns(ktime_get_boottime())\n#endif' drivers/kernelsu/feature/sentinel.c
+        fi
+
+        echo "[-] Patching drivers/kernelsu/Kconfig to force enable sucompat..."
+        if [ -f "drivers/kernelsu/Kconfig" ]; then
+          sed -i '/config KSU_SUCOMPAT/,/^$/ s/depends on.*//g' drivers/kernelsu/Kconfig
+          sed -i '/config KSU_SUCOMPAT/,/^$/ s/default n/default y/g' drivers/kernelsu/Kconfig
         fi
 
     - name: SUSFS
@@ -101,7 +107,7 @@ jobs:
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
-        # تفعيل إعدادات Sucompat بشكل إجباري داخل ملف الإعدادات
+        # فرض تفعيل خيارات الكيرنل بشكل قاطع قبل وبعد olddefconfig
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KSU_SUCOMPAT=y" >> out/.config
 
@@ -117,6 +123,9 @@ jobs:
         sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-ReSukiSU-Ultima-${VERSION_VAL}\"/" out/.config
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
+
+        echo "CONFIG_KSU=y" >> out/.config
+        echo "CONFIG_KSU_SUCOMPAT=y" >> out/.config
 
         make -C $(pwd) O=$(pwd)/out prepare
         make -C $(pwd) O=$(pwd)/out scripts
