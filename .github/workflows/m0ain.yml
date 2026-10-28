@@ -27,18 +27,14 @@ jobs:
         echo "[-] Cloning ReSukiSU-Ultima repo..."
         git clone -b main https://github.com/Halk56855/ReSukiSU-Ultima.git KernelSU
 
-        echo "[-] Patching ReSukiSU setup.sh to skip incompatible sucompat hooks..."
-        # منع السكربت من محاولة تعديل ملفات الـ exec غير المتوافقة مع نواة 4.19
-        if [ -f "./KernelSU/kernel/setup.sh" ]; then
-          sed -i '/exec\.c/d' ./KernelSU/kernel/setup.sh
-          sed -i '/sucompat/d' ./KernelSU/kernel/setup.sh
-        fi
+        echo "[-] Removing exec and sucompat patches for Kernel 4.19 compatibility..."
+        find ./KernelSU -type f \( -name "*exec*" -o -name "*sucompat*" \) -exec rm -f {} +
 
         echo "[-] Setup ReSukiSU-Ultima..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-    - name: Fix Compatibility for Kernel 4.19
+    - name: Fix Compatibility for Kernel 4.19 (Sentinel)
       run: |
         echo "[-] Adding compatibility patch for ktime_get_boottime_ns..."
         if [ -f "drivers/kernelsu/feature/sentinel.c" ]; then
