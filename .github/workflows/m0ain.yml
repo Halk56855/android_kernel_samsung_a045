@@ -98,11 +98,12 @@ jobs:
         make -C $(pwd) O=$(pwd)/out touchdirt-a04_defconfig
 
         if [ -f "arch/arm64/configs/touchdirt.config" ]; then
-          echo "CONFIG_KSU_SUCOMPAT=y" >> arch/arm64/configs/touchdirt.config
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
-        else
-          echo "CONFIG_KSU_SUCOMPAT=y" >> out/.config
         fi
+
+        # تفعيل إعدادات Sucompat بشكل إجباري داخل ملف الإعدادات
+        echo "CONFIG_KSU=y" >> out/.config
+        echo "CONFIG_KSU_SUCOMPAT=y" >> out/.config
 
         grep '^CONFIG_LOCALVERSION=' out/.config
 
