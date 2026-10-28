@@ -30,8 +30,6 @@ jobs:
         echo "[-] Setup SakiSU..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
-        rm -rf KernelSU
-        git clone -b main https://github.com/XingChenRS/SakiSU.git KernelSU
 
     - name: Install build dependencies
       run: |
@@ -90,7 +88,7 @@ jobs:
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
-        # تفعيل SakiSU إجبارياً في الإعدادات لمنع خطأ الـ Undefined symbols
+        # تفعيل SakiSU في ملف التكوين
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_KSU_SUCOMPAT=y" >> out/.config
 
