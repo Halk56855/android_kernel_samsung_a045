@@ -31,16 +31,17 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-    - name: Fix Compatibility and Strip Sucompat Hooks for Kernel 4.19
+    - name: Fix Compatibility and Sucompat Hooks for Kernel 4.19
       run: |
         echo "[-] Adding compatibility patch for ktime_get_boottime_ns..."
         if [ -f "drivers/kernelsu/feature/sentinel.c" ]; then
           sed -i '1i #ifndef ktime_get_boottime_ns\n#define ktime_get_boottime_ns() ktime_to_ns(ktime_get_boottime())\n#endif' drivers/kernelsu/feature/sentinel.c
         fi
 
-        echo "[-] Removing undefined sucompat hooks from fs/exec.c..."
+        echo "[-] Safely commenting out undefined sucompat hooks in fs/exec.c..."
         if [ -f "fs/exec.c" ]; then
-          sed -i '/ksu_handle_post_execveat_sucompat/d' fs/exec.c
+          # تعليق الأسطر التي تحتوي على استدعاء sucompat لمنع أخطاء الـ Linker والـ Syntax معا
+          sed -i '/ksu_handle_post_execveat_sucompat/s/^/\/\//' fs/exec.c
         fi
 
     - name: SUSFS
