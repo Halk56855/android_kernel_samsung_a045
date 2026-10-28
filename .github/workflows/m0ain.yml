@@ -31,8 +31,10 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Reverting fs/exec.c to pristine state to remove incompatible sucompat hooks..."
-        git checkout fs/exec.c || true
+        echo "[-] Removing ksu_handle_post_execveat_sucompat call from fs/exec.c permanently..."
+        if [ -f "fs/exec.c" ]; then
+          sed -i '/ksu_handle_post_execveat_sucompat/d' fs/exec.c
+        fi
 
     - name: Fix Compatibility for Kernel 4.19 (Sentinel)
       run: |
