@@ -57,34 +57,32 @@ jobs:
             content = f.read()
 
         lines = content.splitlines()
-        clean_lines = []
-        for line in lines:
-            if "void *envp, int *flags, int *retval" in line:
-                continue
-            clean_lines.append(line)
+        clean_lines = [line for line in lines if "void *envp, int *flags, int *retval" not in line]
         content = "\n".join(clean_lines)
 
         target = "static int do_execveat_common(int fd, struct filename *filename,"
-        replacement = """static int do_execveat_common(int fd, struct filename *filename,
-				struct user_arg_ptr argv,
-				struct user_arg_ptr envp,
-				int flags)
-{
-	char *path = NULL;
-	int retval;
-
-#ifdef CONFIG_KSU
-	ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);
-#endif
-
-#ifdef CONFIG_SUSFS
-	susfs_handle_execveat(&fd, &filename, &argv, &envp, &flags);
-#endif"""
+        replacement = (
+            "static int do_execveat_common(int fd, struct filename *filename,\n"
+            "                struct user_arg_ptr argv,\n"
+            "                struct user_arg_ptr envp,\n"
+            "                int flags)\n"
+            "{\n"
+            "    char *path = NULL;\n"
+            "    int retval;\n"
+            "\n"
+            "#ifdef CONFIG_KSU\n"
+            "    ksu_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n"
+            "#endif\n"
+            "\n"
+            "#ifdef CONFIG_SUSFS\n"
+            "    susfs_handle_execveat(&fd, &filename, &argv, &envp, &flags);\n"
+            "#endif"
+        )
 
         if target in content and "ksu_handle_execveat" not in content[:content.find(target)+300]:
             content = content.replace(target, replacement, 1)
             print("[+] Successfully injected clean hooks into do_execveat_common.")
-        
+
         with open(filepath, "w") as f:
             f.write(content)
         EOF
