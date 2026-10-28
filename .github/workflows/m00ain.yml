@@ -90,6 +90,10 @@ jobs:
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
 
+        # تفعيل SakiSU إجبارياً في الإعدادات لمنع خطأ الـ Undefined symbols
+        echo "CONFIG_KSU=y" >> out/.config
+        echo "CONFIG_KSU_SUCOMPAT=y" >> out/.config
+
         grep '^CONFIG_LOCALVERSION=' out/.config
 
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
