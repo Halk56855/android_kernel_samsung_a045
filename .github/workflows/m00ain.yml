@@ -119,6 +119,13 @@ jobs:
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
+        # فرض تفعيل خيارات SakiSU و Sucompat إجبارياً في الـ .config لمنع نقص الوظائف
+        echo "CONFIG_KSU=y" >> out/.config
+        echo "CONFIG_KSU_SUCOMPAT=y" >> out/.config
+        echo "CONFIG_KSU_MANUAL_HOOK=y" >> out/.config
+
+        make -C $(pwd) O=$(pwd)/out olddefconfig
+
         make -C $(pwd) O=$(pwd)/out prepare
         make -C $(pwd) O=$(pwd)/out scripts
         make -C $(pwd) O=$(pwd)/out security/
