@@ -22,7 +22,7 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Integrating SakiSU & Bypassing Hook Check
+    - name: Integrating SakiSU & Fixing Kconfig Integration
       run: |
         echo "[-] Cloning SakiSU repo..."
         git clone -b main https://github.com/XingChenRS/SakiSU.git KernelSU
@@ -36,7 +36,7 @@ jobs:
           echo "# Bypassed manual hook check" > ./KernelSU/kernel/tools/manual_hook_check.mk
         fi
 
-        echo "[-] Ensuring KernelSU is linked and forced in Makefile..."
+        echo "[-] Ensuring KernelSU is linked and integrated into drivers Kconfig/Makefile..."
         if [ ! -d "drivers/kernelsu" ]; then
           if [ -d "KernelSU/kernel" ]; then
             ln -sf "$(pwd)/KernelSU/kernel" drivers/kernelsu
@@ -45,9 +45,28 @@ jobs:
           fi
         fi
 
+        # إجبار نظام بناء النواة على ترجمة مجلد kernelsu
         if ! grep -q "kernelsu" drivers/Makefile; then
           echo "obj-y += kernelsu/" >> drivers/Makefile
         fi
+
+        # ربط ملف Kconfig الخاص بـ SakiSU مع نظام النواة لكي لا يتم حذف الخيارات
+        if [ -f "drivers/kernelsu/Kconfig" ] && [ -f "drivers/Kconfig" ]; then
+          if ! grep -q "kernelsu/Kconfig" drivers/Kconfig; then
+            sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig || echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
+          fi
+        fi
+
+        # إضافة خيارات SakiSU إلى ملف التكوين المخصص لمنع حذفها
+        mkdir -p arch/arm64/configs
+        TOUCHDIRT_CFG="arch/arm64/configs/touchdirt.config"
+        if [ ! -f "$TOUCHDIRT_CFG" ]; then
+          touch "$TOUCHDIRT_CFG"
+        fi
+
+        grep -q "CONFIG_KSU=" "$TOUCHDIRT_CFG" || echo "CONFIG_KSU=y" >> "$TOUCHDIRT_CFG"
+        grep -q "CONFIG_KSU_MANUAL_HOOK=" "$TOUCHDIRT_CFG" || echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$TOUCHDIRT_CFG"
+        grep -q "CONFIG_KSU_SUCOMPAT=" "$TOUCHDIRT_CFG" || echo "CONFIG_KSU_SUCOMPAT=y" >> "$TOUCHDIRT_CFG"
 
     - name: Install build dependencies
       run: |
@@ -116,13 +135,6 @@ jobs:
         fi
 
         sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-SakiSU-$VERSION_STRING\"/" out/.config
-
-        make -C $(pwd) O=$(pwd)/out olddefconfig
-
-        # فرض تفعيل خيارات SakiSU و Sucompat إجبارياً في الـ .config لمنع نقص الوظائف
-        echo "CONFIG_KSU=y" >> out/.config
-        echo "CONFIG_KSU_SUCOMPAT=y" >> out/.config
-        echo "CONFIG_KSU_MANUAL_HOOK=y" >> out/.config
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
