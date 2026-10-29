@@ -1,4 +1,4 @@
-name: Build TouchDirt Kernel, SakiSU, Enforcing
+name: Build TouchDirt Kernel, SakiSU, SUSFS, Enforcing
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Integrating SakiSU & Fixing Undefined Symbols
+    - name: Integrating SakiSU & SUSFS
       run: |
         echo "[-] Cloning SakiSU repo..."
         git clone -b main https://github.com/XingChenRS/SakiSU.git KernelSU
@@ -31,12 +31,17 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
+        echo "[-] Cloning and applying SUSFS patches..."
+        git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
+        chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
+        ./SUSFS/Patches/susfs_inline_hook_patches.sh
+
         echo "[-] Bypassing strict manual hook check for older kernel..."
         if [ -f "./KernelSU/kernel/tools/manual_hook_check.mk" ]; then
           echo "# Bypassed manual hook check" > ./KernelSU/kernel/tools/manual_hook_check.mk
         fi
 
-        echo "[-] Creating ksu_stub.c to permanently resolve undefined symbol..."
+        echo "[-] Creating ksu_stub.c to permanently resolve undefined symbols..."
         cat << 'EOF' > fs/ksu_stub.c
         #include <linux/types.h>
         void ksu_handle_post_execveat_sucompat(void) {
@@ -78,6 +83,7 @@ jobs:
         grep -q "CONFIG_KSU=" "$TOUCHDIRT_CFG" || echo "CONFIG_KSU=y" >> "$TOUCHDIRT_CFG"
         grep -q "CONFIG_KSU_MANUAL_HOOK=" "$TOUCHDIRT_CFG" || echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$TOUCHDIRT_CFG"
         grep -q "CONFIG_KSU_SUCOMPAT=" "$TOUCHDIRT_CFG" || echo "CONFIG_KSU_SUCOMPAT=y" >> "$TOUCHDIRT_CFG"
+        grep -q "CONFIG_KSU_SUSFS=" "$TOUCHDIRT_CFG" || echo "CONFIG_KSU_SUSFS=y" >> "$TOUCHDIRT_CFG"
 
     - name: Install build dependencies
       run: |
@@ -145,7 +151,7 @@ jobs:
           VERSION_STRING="BETA"
         fi
 
-        sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-SakiSU-$VERSION_STRING\"/" out/.config
+        sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-SakiSU-SUSFS-$VERSION_STRING\"/" out/.config
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
@@ -169,15 +175,15 @@ jobs:
       run: |
         DATE=$(date -u +"%Y-%m-%d")
 
-        git clone https://github.com/DaniTheSillyFem/AnyKernel3 --depth 1
+        git clone https://github.com/Halk56855/AnyKernel3-a04.git --depth 1 AnyKernel3
 
         cp out/arch/arm64/boot/Image AnyKernel3/Image
 
         cd AnyKernel3
-        zip -r9 "../TouchDirt-SakiSU-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
+        zip -r9 "../TouchDirt-SakiSU-SUSFS-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
 
     - name: Upload AnyKernel3 ZIP
       uses: actions/upload-artifact@v4
       with:
-        name: TouchDirt-SakiSU-Enforcing
+        name: TouchDirt-SakiSU-SUSFS-Enforcing
         path: TouchDirt-*.zip
