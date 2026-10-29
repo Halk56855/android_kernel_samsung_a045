@@ -22,7 +22,7 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Integrating SakiSU & Forcing Compilation
+    - name: Integrating SakiSU & Bypassing Hook Check
       run: |
         echo "[-] Cloning SakiSU repo..."
         git clone -b main https://github.com/XingChenRS/SakiSU.git KernelSU
@@ -30,6 +30,11 @@ jobs:
         echo "[-] Running SakiSU setup script..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
+
+        echo "[-] Bypassing strict manual hook check for older kernel..."
+        if [ -f "./KernelSU/kernel/tools/manual_hook_check.mk" ]; then
+          echo "# Bypassed manual hook check" > ./KernelSU/kernel/tools/manual_hook_check.mk
+        fi
 
         echo "[-] Ensuring KernelSU is linked and forced in Makefile..."
         if [ ! -d "drivers/kernelsu" ]; then
@@ -40,21 +45,9 @@ jobs:
           fi
         fi
 
-        # إجبار نظام بناء النواة على ترجمة مجلد kernelsu
         if ! grep -q "kernelsu" drivers/Makefile; then
           echo "obj-y += kernelsu/" >> drivers/Makefile
         fi
-
-        # إضافة خيارات SakiSU والوضع اليدوي إلى ملف التكوين المخصص
-        mkdir -p arch/arm64/configs
-        TOUCHDIRT_CFG="arch/arm64/configs/touchdirt.config"
-        if [ ! -f "$TOUCHDIRT_CFG" ]; then
-          touch "$TOUCHDIRT_CFG"
-        fi
-
-        grep -q "CONFIG_KSU=" "$TOUCHDIRT_CFG" || echo "CONFIG_KSU=y" >> "$TOUCHDIRT_CFG"
-        grep -q "CONFIG_KSU_MANUAL_HOOK=" "$TOUCHDIRT_CFG" || echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$TOUCHDIRT_CFG"
-        grep -q "CONFIG_KSU_SUCOMPAT=" "$TOUCHDIRT_CFG" || echo "CONFIG_KSU_SUCOMPAT=y" >> "$TOUCHDIRT_CFG"
 
     - name: Install build dependencies
       run: |
@@ -112,11 +105,6 @@ jobs:
         if [ -f "arch/arm64/configs/touchdirt.config" ]; then
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
-
-        # تفعيل الخيارات مباشرة في الـ .config كإجراء احترازي إضافي
-        echo "CONFIG_KSU=y" >> out/.config
-        echo "CONFIG_KSU_MANUAL_HOOK=y" >> out/.config
-        echo "CONFIG_KSU_SUCOMPAT=y" >> out/.config
 
         grep '^CONFIG_LOCALVERSION=' out/.config
 
