@@ -22,7 +22,7 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Integrating SakiSU & Fixing Symbols
+    - name: Integrating SakiSU & Fixing Symbols Stub
       run: |
         echo "[-] Cloning SakiSU repo..."
         git clone -b main https://github.com/XingChenRS/SakiSU.git KernelSU
@@ -36,11 +36,16 @@ jobs:
           echo "# Bypassed manual hook check" > ./KernelSU/kernel/tools/manual_hook_check.mk
         fi
 
-        echo "[-] Ensuring missing ksu_handle_post_execveat_sucompat symbol is defined..."
-        if [ -f "./KernelSU/kernel/sucompat.c" ]; then
-          if ! grep -q "ksu_handle_post_execveat_sucompat" ./KernelSU/kernel/sucompat.c; then
-            echo "void ksu_handle_post_execveat_sucompat(void) {}" >> ./KernelSU/kernel/sucompat.c
-          fi
+        echo "[-] Creating sucompat_stub.o to permanently fix undefined symbol..."
+        cat << 'EOF' > ./KernelSU/kernel/sucompat_stub.c
+        #include <linux/types.h>
+        void ksu_handle_post_execveat_sucompat(void) {
+            // Stub definition to prevent undefined symbol error during linking
+        }
+        EOF
+
+        if [ -f "./KernelSU/kernel/Makefile" ]; then
+          echo "obj-y += sucompat_stub.o" >> ./KernelSU/kernel/Makefile
         fi
 
         echo "[-] Ensuring KernelSU is linked and integrated into drivers Kconfig/Makefile..."
