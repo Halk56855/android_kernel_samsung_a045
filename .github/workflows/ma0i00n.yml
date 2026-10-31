@@ -22,7 +22,7 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Integrating FinaSU & SUSFS
+    - name: Integrating FinaSU & SUSFS (Non-GKI Kernel 4.19)
       run: |
         echo "[-] Cloning FinaSU repo..."
         git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU
@@ -31,7 +31,7 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Cloning and applying SUSFS patches..."
+        echo "[-] Cloning and applying SUSFS patches for Non-GKI kernel..."
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
@@ -111,69 +111,3 @@ jobs:
         echo "OBJCOPY=llvm-objcopy" >> $GITHUB_ENV
         echo "OBJDUMP=llvm-objdump" >> $GITHUB_ENV
         echo "STRIP=llvm-strip" >> $GITHUB_ENV
-        echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
-        echo "ARCH=arm64" >> $GITHUB_ENV
-        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
-        echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
-
-    - name: Configure and Compile Kernel
-      run: |
-        make -C $(pwd) O=$(pwd)/out touchdirt-a04_defconfig
-
-        if [ -f "arch/arm64/configs/touchdirt.config" ]; then
-          ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
-        fi
-
-        make -C $(pwd) O=$(pwd)/out olddefconfig
-
-        # Force KSU and SUSFS configurations to stay enabled in out/.config
-        for cfg in CONFIG_KSU CONFIG_KSU_MANUAL_HOOK CONFIG_KSU_SUCOMPAT CONFIG_KSU_SUSFS; do
-          sed -i "s/# $cfg is not set/$cfg=y/g" out/.config
-          grep -q "$cfg=y" out/.config || echo "$cfg=y" >> out/.config
-        done
-
-        grep '^CONFIG_LOCALVERSION=' out/.config
-
-        sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
-
-        VERSION_STRING="${{ inputs.version }}"
-        if [ -z "$VERSION_STRING" ]; then
-          VERSION_STRING="BETA"
-        fi
-
-        sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-FinaSU-SUSFS-$VERSION_STRING\"/" out/.config
-
-        make -C $(pwd) O=$(pwd)/out olddefconfig
-
-        make -C $(pwd) O=$(pwd)/out prepare
-        make -C $(pwd) O=$(pwd)/out scripts
-        make -C $(pwd) O=$(pwd)/out security/
-
-        make -C $(pwd) O=$(pwd)/out -j$(nproc) || make -C $(pwd) O=$(pwd)/out -j1
-
-    - name: Get kernel version
-      id: version
-      run: |
-        VERSION="${{ inputs.version }}"
-        if [ -z "$VERSION" ]; then
-          VERSION="BETA"
-        fi
-        echo "VERSION=$VERSION"
-        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-    - name: Package AnyKernel3
-      run: |
-        DATE=$(date -u +"%Y-%m-%d")
-
-        git clone https://github.com/Halk56855/AnyKernel3-a04.git --depth 1 AnyKernel3
-
-        cp out/arch/arm64/boot/Image AnyKernel3/Image
-
-        cd AnyKernel3
-        zip -r9 "../TouchDirt-FinaSU-SUSFS-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
-
-    - name: Upload AnyKernel3 ZIP
-      uses: actions/upload-artifact@v4
-      with:
-        name: TouchDirt-FinaSU-SUSFS-Enforcing
-        path: TouchDirt-*.zip
