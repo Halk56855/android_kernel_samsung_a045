@@ -1,4 +1,4 @@
-Name: Build TouchDirt Kernel, KSU-Next, SUSFS, Enforcing
+name: Build TouchDirt Kernel, KSU-Next, SUSFS, Enforcing
 
 on:
   workflow_dispatch:
