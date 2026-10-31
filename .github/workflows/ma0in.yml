@@ -1,4 +1,4 @@
-name: Build TouchDirt Kernel, KSU-Next, SUSFS, Enforcing
+Name: Build TouchDirt Kernel, KSU-Next, SUSFS, Enforcing
 
 on:
   workflow_dispatch:
@@ -51,24 +51,21 @@ jobs:
           fi
         fi
 
-        echo "[-] Ensuring KernelSU is linked and integrated into drivers Kconfig/Makefile..."
-        if [ ! -d "drivers/kernelsu" ]; then
-          if [ -d "KernelSU/kernel" ]; then
-            ln -sf "$(pwd)/KernelSU/kernel" drivers/kernelsu
-          elif [ -d "KernelSU" ]; then
-            ln -sf "$(pwd)/KernelSU" drivers/kernelsu
-          fi
+        echo "[-] Copying KernelSU into drivers/kernelsu for reliable Kbuild compilation..."
+        rm -rf drivers/kernelsu
+        if [ -d "KernelSU/kernel" ]; then
+          cp -rf KernelSU/kernel drivers/kernelsu
+        elif [ -d "KernelSU" ]; then
+          cp -rf KernelSU drivers/kernelsu
+        fi
+
+        if ! grep -q "kernelsu" drivers/Makefile; then
+          echo "obj-y += kernelsu/" >> drivers/Makefile
         fi
 
         if [ -f "drivers/kernelsu/Kconfig" ] && [ -f "drivers/Kconfig" ]; then
           if ! grep -q "kernelsu/Kconfig" drivers/Kconfig; then
             sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig || echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
-          fi
-        fi
-
-        if [ -f "drivers/Makefile" ]; then
-          if ! grep -q "kernelsu" drivers/Makefile; then
-            echo "obj-y += kernelsu/" >> drivers/Makefile
           fi
         fi
 
