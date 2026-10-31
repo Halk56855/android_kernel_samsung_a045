@@ -1,4 +1,4 @@
-name: Build TouchDirt Kernel, KSU-Next, SUSFS, Enforcing
+Name: Build TouchDirt Kernel, KSU-Next, SUSFS, Enforcing
 
 on:
   workflow_dispatch:
@@ -55,18 +55,20 @@ jobs:
         if [ ! -d "drivers/kernelsu" ]; then
           if [ -d "KernelSU/kernel" ]; then
             ln -sf "$(pwd)/KernelSU/kernel" drivers/kernelsu
-          else
+          elif [ -d "KernelSU" ]; then
             ln -sf "$(pwd)/KernelSU" drivers/kernelsu
           fi
-        fi
-
-        if ! grep -q "kernelsu" drivers/Makefile; then
-          echo "obj-y += kernelsu/" >> drivers/Makefile
         fi
 
         if [ -f "drivers/kernelsu/Kconfig" ] && [ -f "drivers/Kconfig" ]; then
           if ! grep -q "kernelsu/Kconfig" drivers/Kconfig; then
             sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig || echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
+          fi
+        fi
+
+        if [ -f "drivers/Makefile" ]; then
+          if ! grep -q "kernelsu" drivers/Makefile; then
+            echo "obj-y += kernelsu/" >> drivers/Makefile
           fi
         fi
 
@@ -76,10 +78,9 @@ jobs:
           touch "$TOUCHDIRT_CFG"
         fi
 
-        grep -q "CONFIG_KSU=" "$TOUCHDIRT_CFG" || echo "CONFIG_KSU=y" >> "$TOUCHDIRT_CFG"
-        grep -q "CONFIG_KSU_MANUAL_HOOK=" "$TOUCHDIRT_CFG" || echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$TOUCHDIRT_CFG"
-        grep -q "CONFIG_KSU_SUCOMPAT=" "$TOUCHDIRT_CFG" || echo "CONFIG_KSU_SUCOMPAT=y" >> "$TOUCHDIRT_CFG"
-        grep -q "CONFIG_KSU_SUSFS=" "$TOUCHDIRT_CFG" || echo "CONFIG_KSU_SUSFS=y" >> "$TOUCHDIRT_CFG"
+        for cfg in CONFIG_KSU CONFIG_KSU_MANUAL_HOOK CONFIG_KSU_SUCOMPAT CONFIG_KSU_SUSFS; do
+          grep -q "$cfg=" "$TOUCHDIRT_CFG" || echo "$cfg=y" >> "$TOUCHDIRT_CFG"
+        done
 
     - name: Install build dependencies
       run: |
@@ -141,17 +142,10 @@ jobs:
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
         # Force KSU and SUSFS configurations to stay enabled in out/.config
-        sed -i 's/# CONFIG_KSU is not set/CONFIG_KSU=y/g' out/.config
-        grep -q "CONFIG_KSU=y" out/.config || echo "CONFIG_KSU=y" >> out/.config
-
-        sed -i 's/# CONFIG_KSU_MANUAL_HOOK is not set/CONFIG_KSU_MANUAL_HOOK=y/g' out/.config
-        grep -q "CONFIG_KSU_MANUAL_HOOK=y" out/.config || echo "CONFIG_KSU_MANUAL_HOOK=y" >> out/.config
-
-        sed -i 's/# CONFIG_KSU_SUCOMPAT is not set/CONFIG_KSU_SUCOMPAT=y/g' out/.config
-        grep -q "CONFIG_KSU_SUCOMPAT=y" out/.config || echo "CONFIG_KSU_SUCOMPAT=y" >> out/.config
-
-        sed -i 's/# CONFIG_KSU_SUSFS is not set/CONFIG_KSU_SUSFS=y/g' out/.config
-        grep -q "CONFIG_KSU_SUSFS=y" out/.config || echo "CONFIG_KSU_SUSFS=y" >> out/.config
+        for cfg in CONFIG_KSU CONFIG_KSU_MANUAL_HOOK CONFIG_KSU_SUCOMPAT CONFIG_KSU_SUSFS; do
+          sed -i "s/# $cfg is not set/$cfg=y/g" out/.config
+          grep -q "$cfg=y" out/.config || echo "$cfg=y" >> out/.config
+        done
 
         grep '^CONFIG_LOCALVERSION=' out/.config
 
