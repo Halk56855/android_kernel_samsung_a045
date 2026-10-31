@@ -1,4 +1,4 @@
-name: Build TouchDirt Kernel, KSU-Next, SUSFS, Enforcing
+Name: Build TouchDirt Kernel, KSU-Next, SUSFS, Enforcing
 
 on:
   workflow_dispatch:
@@ -137,6 +137,21 @@ jobs:
         if [ -f "arch/arm64/configs/touchdirt.config" ]; then
           ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
         fi
+
+        make -C $(pwd) O=$(pwd)/out olddefconfig
+
+        # Force KSU and SUSFS configurations to stay enabled in out/.config
+        sed -i 's/# CONFIG_KSU is not set/CONFIG_KSU=y/g' out/.config
+        grep -q "CONFIG_KSU=y" out/.config || echo "CONFIG_KSU=y" >> out/.config
+
+        sed -i 's/# CONFIG_KSU_MANUAL_HOOK is not set/CONFIG_KSU_MANUAL_HOOK=y/g' out/.config
+        grep -q "CONFIG_KSU_MANUAL_HOOK=y" out/.config || echo "CONFIG_KSU_MANUAL_HOOK=y" >> out/.config
+
+        sed -i 's/# CONFIG_KSU_SUCOMPAT is not set/CONFIG_KSU_SUCOMPAT=y/g' out/.config
+        grep -q "CONFIG_KSU_SUCOMPAT=y" out/.config || echo "CONFIG_KSU_SUCOMPAT=y" >> out/.config
+
+        sed -i 's/# CONFIG_KSU_SUSFS is not set/CONFIG_KSU_SUSFS=y/g' out/.config
+        grep -q "CONFIG_KSU_SUSFS=y" out/.config || echo "CONFIG_KSU_SUSFS=y" >> out/.config
 
         grep '^CONFIG_LOCALVERSION=' out/.config
 
