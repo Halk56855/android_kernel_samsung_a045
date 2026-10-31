@@ -1,4 +1,4 @@
-name: Build TouchDirt Kernel, KSU-Next, SUSFS, Enforcing
+Name: Build TouchDirt Kernel, KSU-Next, SUSFS, Enforcing
 
 on:
   workflow_dispatch:
@@ -33,8 +33,8 @@ jobs:
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
 
         echo "[-] Bypassing strict manual hook check for older kernel..."
-        if [ -f "./KernelSU/kernel/tools/manual_hook_check.mk" ]; then
-          echo "# Bypassed manual hook check" > ./KernelSU/kernel/tools/manual_hook_check.mk
+        if [ -f "./drivers/kernelsu/tools/manual_hook_check.mk" ]; then
+          echo "# Bypassed manual hook check" > ./drivers/kernelsu/tools/manual_hook_check.mk
         fi
 
         echo "[-] Creating ksu_stub.c to permanently resolve undefined symbols..."
@@ -48,24 +48,6 @@ jobs:
         if [ -f "fs/Makefile" ]; then
           if ! grep -q "ksu_stub.o" fs/Makefile; then
             echo "obj-y += ksu_stub.o" >> fs/Makefile
-          fi
-        fi
-
-        echo "[-] Copying KernelSU into drivers/kernelsu for reliable Kbuild compilation..."
-        rm -rf drivers/kernelsu
-        if [ -d "KernelSU/kernel" ]; then
-          cp -rf KernelSU/kernel drivers/kernelsu
-        elif [ -d "KernelSU" ]; then
-          cp -rf KernelSU drivers/kernelsu
-        fi
-
-        if ! grep -q "kernelsu" drivers/Makefile; then
-          echo "obj-y += kernelsu/" >> drivers/Makefile
-        fi
-
-        if [ -f "drivers/kernelsu/Kconfig" ] && [ -f "drivers/Kconfig" ]; then
-          if ! grep -q "kernelsu/Kconfig" drivers/Kconfig; then
-            sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig || echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
           fi
         fi
 
