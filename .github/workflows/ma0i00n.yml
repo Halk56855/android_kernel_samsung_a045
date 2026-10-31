@@ -1,4 +1,4 @@
-Name: Build TouchDirt Kernel, FinaSU, SUSFS, Enforcing
+name: Build TouchDirt Kernel, FinaSU, SUSFS, Enforcing
 
 on:
   workflow_dispatch:
