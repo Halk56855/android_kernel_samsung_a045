@@ -31,7 +31,7 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing MODULE_IMPORT_NS, static_assert, pgtable.h & safe file_wrapper stubbing)..."
+        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing MODULE_IMPORT_NS, static_assert, pgtable.h & stubbing file_wrapper/seccomp_cache)..."
         if [ -f "./drivers/kernelsu/core/init.c" ]; then
           sed -i '/MODULE_IMPORT_NS/d' ./drivers/kernelsu/core/init.c
         elif [ -f "./KernelSU/kernel/core/init.c" ]; then
@@ -50,7 +50,7 @@ jobs:
           sed -i '/static_assert/d' ./KernelSU/kernel/feature/uts_view.c
         fi
 
-        # معالجة مشكلة pgtable.h لنواة 4.19 باستبدالها بـ asm/pgtable.h مباشرة
+        # Fix pgtable.h for kernel 4.19 in sucompat.c
         SUCOMPAT_PATH=""
         if [ -f "./drivers/kernelsu/feature/sucompat.c" ]; then
           SUCOMPAT_PATH="./drivers/kernelsu/feature/sucompat.c"
@@ -63,7 +63,7 @@ jobs:
           sed -i 's|#include <linux/pgtable.h>|#include <asm/pgtable.h>|g' "$SUCOMPAT_PATH"
         fi
 
-        # استبدال آمن لملف file_wrapper.c لنواة 4.19 لمنع أخطاء التكسير البرمجي
+        # Safely stub out file_wrapper.c for kernel 4.19
         python3 -c '
         import os
         for path in ["./drivers/kernelsu/infra/file_wrapper.c", "./KernelSU/kernel/infra/file_wrapper.c"]:
@@ -74,13 +74,26 @@ jobs:
                     #include <linux/types.h>
                     #include <linux/fs.h>
                     
-                    int ksu_init_file_wrapper(void) {
-                        return 0;
-                    }
-                    void ksu_exit_file_wrapper(void) {
-                    }
+                    int ksu_init_file_wrapper(void) { return 0; }
+                    void ksu_exit_file_wrapper(void) {}
                     """)
                 print("Safely stubbed file_wrapper.c at:", path)
+        '
+
+        # Safely stub out seccomp_cache.c for kernel 4.19 (missing SECCOMP_ARCH_NATIVE_NR)
+        python3 -c '
+        import os
+        for path in ["./drivers/kernelsu/infra/seccomp_cache.c", "./KernelSU/kernel/infra/seccomp_cache.c"]:
+            if os.path.exists(path):
+                with open(path, "w") as f:
+                    f.write("""
+                    #include <linux/version.h>
+                    #include <linux/types.h>
+                    
+                    int ksu_init_seccomp_cache(void) { return 0; }
+                    void ksu_exit_seccomp_cache(void) {}
+                    """)
+                print("Safely stubbed seccomp_cache.c at:", path)
         '
 
         echo "[-] Cloning and applying SUSFS patches for Non-GKI kernel..."
@@ -115,7 +128,7 @@ jobs:
           touch "$TOUCHDIRT_CFG"
         fi
 
-        # Enforcing required configurations based on FinaSU official docs
+        # Enforcing required configurations
         for cfg in CONFIG_KSU CONFIG_KPROBES CONFIG_KALLSYMS_ALL CONFIG_EXT4_FS CONFIG_HEADERS_INSTALL CONFIG_THREAD_INFO_IN_TASK CONFIG_KSU_MANUAL_HOOK CONFIG_KSU_SUCOMPAT CONFIG_KSU_SUSFS; do
           grep -q "$cfg=" "$TOUCHDIRT_CFG" || echo "$cfg=y" >> "$TOUCHDIRT_CFG"
         done
@@ -179,13 +192,10 @@ jobs:
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
 
-        # Force required FinaSU and SUSFS configurations to stay enabled in out/.config
         for cfg in CONFIG_KSU CONFIG_KPROBES CONFIG_KALLSYMS_ALL CONFIG_EXT4_FS CONFIG_HEADERS_INSTALL CONFIG_THREAD_INFO_IN_TASK CONFIG_KSU_MANUAL_HOOK CONFIG_KSU_SUCOMPAT CONFIG_KSU_SUSFS; do
           sed -i "s/# $cfg is not set/$cfg=y/g" out/.config
           grep -q "$cfg=y" out/.config || echo "$cfg=y" >> out/.config
         done
-
-        grep '^CONFIG_LOCALVERSION=' out/.config || true
 
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' out/.config || true
 
@@ -203,7 +213,6 @@ jobs:
         make -C $(pwd) O=$(pwd)/out headers_install
         make -C $(pwd) O=$(pwd)/out security/
 
-        # Build kernel with official FinaSU Manager Signature requirements
         make -C $(pwd) O=$(pwd)/out -j$(nproc) \
           KSU_REQUIRE_PREINIT=1 \
           KSU_EXPECTED_SIZE2=0x02cc \
