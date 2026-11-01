@@ -31,7 +31,7 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing allowlist.c, MODULE_IMPORT_NS, static_assert, pgtable.h, su_mount_ns.c & stubbing unsupported files)..."
+        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing allowlist.c, app_profile.c, MODULE_IMPORT_NS, static_assert, pgtable.h, su_mount_ns.c & stubbing unsupported files)..."
         if [ -f "./drivers/kernelsu/core/init.c" ]; then
           sed -i '/MODULE_IMPORT_NS/d' ./drivers/kernelsu/core/init.c
         elif [ -f "./KernelSU/kernel/core/init.c" ]; then
@@ -74,6 +74,31 @@ jobs:
                 with open(path, "w") as f:
                     f.write(content)
                 print("Patched su_mount_ns.c at:", path)
+        '
+
+        # Patch app_profile.c for kernel 4.19 (fixing missing filter_count)
+        python3 -c '
+        import os
+        for path in ["./drivers/kernelsu/policy/app_profile.c", "./KernelSU/kernel/policy/app_profile.c"]:
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    content = f.read()
+                target = "atomic_set(&current->seccomp.filter_count, 0);"
+                replacement = """
+        #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+                atomic_set(&current->seccomp.filter_count, 0);
+        #else
+                if (current->seccomp.mode != SECCOMP_MODE_DISABLED) {
+                    current->seccomp.mode = SECCOMP_MODE_DISABLED;
+                    current->seccomp.filter = NULL;
+                }
+        #endif
+                """
+                if target in content:
+                    content = content.replace(target, replacement)
+                    with open(path, "w") as f:
+                        f.write(content)
+                    print("Patched app_profile.c at:", path)
         '
 
         # Patch allowlist.c for kernel 4.19 (defining fallthrough and TWA_RESUME)
