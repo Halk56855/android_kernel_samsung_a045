@@ -31,7 +31,7 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing allowlist.c, app_profile.c, MODULE_IMPORT_NS, static_assert, pgtable.h, su_mount_ns.c & stubbing unsupported files)..."
+        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing allowlist.c, app_profile.c, rules.c, MODULE_IMPORT_NS, static_assert, pgtable.h, su_mount_ns.c & stubbing unsupported files)..."
         if [ -f "./drivers/kernelsu/core/init.c" ]; then
           sed -i '/MODULE_IMPORT_NS/d' ./drivers/kernelsu/core/init.c
         elif [ -f "./KernelSU/kernel/core/init.c" ]; then
@@ -99,6 +99,23 @@ jobs:
                     with open(path, "w") as f:
                         f.write(content)
                     print("Patched app_profile.c at:", path)
+        '
+
+        # Patch rules.c for kernel 4.19 (fixing smp_store_release compiletime_assert_atomic_type error)
+        python3 -c '
+        import os
+        for path in ["./drivers/kernelsu/selinux/rules.c", "./KernelSU/kernel/selinux/rules.c"]:
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    content = f.read()
+                fix_smp = """
+                #undef smp_store_release
+                #define smp_store_release(p, v) (*(p) = (v))
+                """
+                content = fix_smp + content
+                with open(path, "w") as f:
+                    f.write(content)
+                print("Patched rules.c at:", path)
         '
 
         # Patch allowlist.c for kernel 4.19 (defining fallthrough and TWA_RESUME)
