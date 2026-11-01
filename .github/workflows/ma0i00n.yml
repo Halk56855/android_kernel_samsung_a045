@@ -22,7 +22,7 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
-    - name: Integrating FinaSU & SUSFS (Keeping .git for Versioning)
+    - name: Integrating FinaSU & SUSFS (Keeping .git & Patching Kernel 4.19)
       run: |
         echo "[-] Cloning FinaSU repo (preserving .git)..."
         git clone -b master https://github.com/LyraVoid/FinaSU.git KernelSU
@@ -31,11 +31,17 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing MODULE_IMPORT_NS error)..."
+        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing MODULE_IMPORT_NS & static_assert)..."
         if [ -f "./drivers/kernelsu/core/init.c" ]; then
           sed -i '/MODULE_IMPORT_NS/d' ./drivers/kernelsu/core/init.c
         elif [ -f "./KernelSU/kernel/core/init.c" ]; then
           sed -i '/MODULE_IMPORT_NS/d' ./KernelSU/kernel/core/init.c
+        fi
+
+        if [ -f "./drivers/kernelsu/feature/netisolate.c" ]; then
+          sed -i '/static_assert/d' ./drivers/kernelsu/feature/netisolate.c
+        elif [ -f "./KernelSU/kernel/feature/netisolate.c" ]; then
+          sed -i '/static_assert/d' ./KernelSU/kernel/feature/netisolate.c
         fi
 
         echo "[-] Cloning and applying SUSFS patches for Non-GKI kernel..."
