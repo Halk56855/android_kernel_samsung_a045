@@ -166,4 +166,100 @@ jobs:
           https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz || \
         wget -q --show-progress \
           https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
-        tar -
+        tar -xf gcc.tar.xz -C ./
+
+        cd ../clang
+        wget -q --show-progress \
+          https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/clang-r383902.tar.gz -O clang.tar.gz
+        mkdir -p host/linux-x86/clang-r383902
+        tar -xzf clang.tar.gz -C host/linux-x86/clang-r383902
+
+    - name: Set Environment Variables
+      run: |
+        CLANG_PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r383902/bin"
+        GCC_PATH="$(pwd)/toolchain/gcc/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu/bin"
+
+        echo "$CLANG_PATH" >> $GITHUB_PATH
+
+        echo "CROSS_COMPILE=$GCC_PATH/aarch64-none-linux-gnu-" >> $GITHUB_ENV
+        echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> $GITHUB_ENV
+        echo "CC=clang" >> $GITHUB_ENV
+        echo "LD=ld.lld" >> $GITHUB_ENV
+        echo "AR=llvm-ar" >> $GITHUB_ENV
+        echo "NM=llvm-nm" >> $GITHUB_ENV
+        echo "OBJCOPY=llvm-objcopy" >> $GITHUB_ENV
+        echo "OBJDUMP=llvm-objdump" >> $GITHUB_ENV
+        echo "STRIP=llvm-strip" >> $GITHUB_ENV
+        echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
+        echo "ARCH=arm64" >> $GITHUB_ENV
+        echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
+        echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
+
+    - name: Configure and Compile Kernel
+      run: |
+        make -C $(pwd) O=$(pwd)/out touchdirt-a04_defconfig
+
+        if [ -f "arch/arm64/configs/touchdirt.config" ]; then
+          ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
+        fi
+
+        make -C $(pwd) O=$(pwd)/out olddefconfig
+
+        for cfg in CONFIG_KSU CONFIG_KPROBES CONFIG_KALLSYMS_ALL CONFIG_EXT4_FS CONFIG_HEADERS_INSTALL CONFIG_THREAD_INFO_IN_TASK CONFIG_KSU_MANUAL_HOOK CONFIG_KSU_SUCOMPAT CONFIG_KSU_SUSFS; do
+          sed -i "s/# $cfg is not set/$cfg=y/g" out/.config
+          grep -q "$cfg=y" out/.config || echo "$cfg=y" >> out/.config
+        done
+
+        sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' out/.config || true
+
+        VERSION_STRING="${{ inputs.version }}"
+        if [ -z "$VERSION_STRING" ]; then
+          VERSION_STRING="BETA"
+        fi
+
+        sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-FinaSU-SUSFS-$VERSION_STRING\"/" out/.config
+
+        make -C $(pwd) O=$(pwd)/out olddefconfig
+
+        make -C $(pwd) O=$(pwd)/out prepare
+        make -C $(pwd) O=$(pwd)/out scripts
+        make -C $(pwd) O=$(pwd)/out headers_install
+        make -C $(pwd) O=$(pwd)/out security/
+
+        make -C $(pwd) O=$(pwd)/out -j$(nproc) \
+          KSU_REQUIRE_PREINIT=1 \
+          KSU_EXPECTED_SIZE2=0x02cc \
+          KSU_EXPECTED_HASH2=2d89b50aaf1db013c2b6738f973f48b62ea21a3a8d7216bfec3521065d448458 \
+          KSU_SECOND_SIGNATURE_RELEASE=1 || \
+        make -C $(pwd) O=$(pwd)/out -j1 \
+          KSU_REQUIRE_PREINIT=1 \
+          KSU_EXPECTED_SIZE2=0x02cc \
+          KSU_EXPECTED_HASH2=2d89b50aaf1db013c2b6738f973f48b62ea21a3a8d7216bfec3521065d448458 \
+          KSU_SECOND_SIGNATURE_RELEASE=1
+
+    - name: Get kernel version
+      id: version
+      run: |
+        VERSION="${{ inputs.version }}"
+        if [ -z "$VERSION" ]; then
+          VERSION="BETA"
+        fi
+        echo "VERSION=$VERSION"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+    - name: Package AnyKernel3
+      run: |
+        DATE=$(date -u +"%Y-%m-%d")
+
+        git clone https://github.com/Halk56855/AnyKernel3-a04.git --depth 1 AnyKernel3
+
+        cp out/arch/arm64/boot/Image AnyKernel3/Image
+
+        cd AnyKernel3
+        zip -r9 "../TouchDirt-FinaSU-SUSFS-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
+
+    - name: Upload AnyKernel3 ZIP
+      uses: actions/upload-artifact@v4
+      with:
+        name: TouchDirt-FinaSU-SUSFS-Enforcing
+        path: TouchDirt-*.zip
