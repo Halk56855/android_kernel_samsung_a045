@@ -44,7 +44,7 @@ jobs:
           sed -i '/static_assert/d' ./KernelSU/kernel/feature/netisolate.c
         fi
 
-        # معالجة مشكلة pgtable.h في نواة 4.19 داخل ملف sucompat.c
+        # معالجة مشكلة pgtable.h لنواة 4.19 باستبدالها بـ asm/pgtable.h مباشرة
         SUCOMPAT_PATH=""
         if [ -f "./drivers/kernelsu/feature/sucompat.c" ]; then
           SUCOMPAT_PATH="./drivers/kernelsu/feature/sucompat.c"
@@ -54,8 +54,7 @@ jobs:
 
         if [ -n "$SUCOMPAT_PATH" ]; then
           echo "[-] Patching pgtable.h in $SUCOMPAT_PATH for kernel 4.19..."
-          # استبدال سطر تضمين pgtable.h بشرط يدعم الإصدارات القديمة والحديثة
-          sed -i 's|#include <linux/pgtable.h>|#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)\n#include <linux/pgtable.h>\n#else\n#include <asm/pgtable.h>\n#endif|g' "$SUCOMPAT_PATH"
+          sed -i 's|#include <linux/pgtable.h>|#include <asm/pgtable.h>|g' "$SUCOMPAT_PATH"
         fi
 
         echo "[-] Cloning and applying SUSFS patches for Non-GKI kernel..."
@@ -187,7 +186,7 @@ jobs:
         make -C $(pwd) O=$(pwd)/out -j1 \
           KSU_REQUIRE_PREINIT=1 \
           KSU_EXPECTED_SIZE2=0x02cc \
-          KSU_EXPECTED_HASH2=2d89b50aaf1db013c2b6738f973f48b62ea21a3a8d7216bfec35210{5}d448458 \
+          KSU_EXPECTED_HASH2=2d89b50aaf1db013c2b6738f973f48b62ea21a3a8d7216bfec3521065d448458 \
           KSU_SECOND_SIGNATURE_RELEASE=1
 
     - name: Get kernel version
