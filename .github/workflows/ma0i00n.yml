@@ -148,6 +148,7 @@ jobs:
 
         make -C $(pwd) O=$(pwd)/out prepare
         make -C $(pwd) O=$(pwd)/out scripts
+        make -C $(pwd) O=$(pwd)/out headers_install
         make -C $(pwd) O=$(pwd)/out security/
 
         # Build kernel with official FinaSU Manager Signature requirements
