@@ -31,6 +31,13 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
+        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing MODULE_IMPORT_NS error)..."
+        if [ -f "./drivers/kernelsu/core/init.c" ]; then
+          sed -i '/MODULE_IMPORT_NS/d' ./drivers/kernelsu/core/init.c
+        elif [ -f "./KernelSU/kernel/core/init.c" ]; then
+          sed -i '/MODULE_IMPORT_NS/d' ./KernelSU/kernel/core/init.c
+        fi
+
         echo "[-] Cloning and applying SUSFS patches for Non-GKI kernel..."
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
