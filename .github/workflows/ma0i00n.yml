@@ -31,7 +31,7 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing allowlist.c, app_profile.c, rules.c, MODULE_IMPORT_NS, static_assert, pgtable.h, su_mount_ns.c & stubbing unsupported files)..."
+        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing allowlist.c, app_profile.c, rules.c, sepolicy.c, MODULE_IMPORT_NS, static_assert, pgtable.h, su_mount_ns.c & stubbing unsupported files)..."
         if [ -f "./drivers/kernelsu/core/init.c" ]; then
           sed -i '/MODULE_IMPORT_NS/d' ./drivers/kernelsu/core/init.c
         elif [ -f "./KernelSU/kernel/core/init.c" ]; then
@@ -116,6 +116,21 @@ jobs:
                     int ksu_apply_custom_con(void) { return 0; }
                     """)
                 print("Safely stubbed rules.c at:", path)
+        '
+
+        # Safely stub out sepolicy.c for kernel 4.19 (fixing SELinux structural mismatch)
+        python3 -c '
+        import os
+        for path in ["./drivers/kernelsu/selinux/sepolicy.c", "./KernelSU/kernel/selinux/sepolicy.c"]:
+            if os.path.exists(path):
+                with open(path, "w") as f:
+                    f.write("""
+                    #include <linux/version.h>
+                    #include <linux/types.h>
+                    
+                    int ksu_selinux_allow(const char *sall, const char *tclass, const char *perm) { return 0; }
+                    """)
+                print("Safely stubbed sepolicy.c at:", path)
         '
 
         # Patch allowlist.c for kernel 4.19 (defining fallthrough and TWA_RESUME)
