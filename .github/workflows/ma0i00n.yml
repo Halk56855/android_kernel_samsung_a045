@@ -31,7 +31,7 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing MODULE_IMPORT_NS, static_assert, pgtable.h & file_wrapper.c)..."
+        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing MODULE_IMPORT_NS, static_assert, pgtable.h & safe file_wrapper stubbing)..."
         if [ -f "./drivers/kernelsu/core/init.c" ]; then
           sed -i '/MODULE_IMPORT_NS/d' ./drivers/kernelsu/core/init.c
         elif [ -f "./KernelSU/kernel/core/init.c" ]; then
@@ -63,29 +63,24 @@ jobs:
           sed -i 's|#include <linux/pgtable.h>|#include <asm/pgtable.h>|g' "$SUCOMPAT_PATH"
         fi
 
-        # معالجة مشاكل file_wrapper.c لدوال iopoll و remap_file_range في نواة 4.19
+        # استبدال آمن لملف file_wrapper.c لنواة 4.19 لمنع أخطاء التكسير البرمجي
         python3 -c '
         import os
         for path in ["./drivers/kernelsu/infra/file_wrapper.c", "./KernelSU/kernel/infra/file_wrapper.c"]:
             if os.path.exists(path):
-                with open(path, "r") as f:
-                    lines = f.readlines()
-                new_lines = []
-                for line in lines:
-                    if "iopoll" in line or "remap_file_range" in line or "REMAP_FILE_DEDUP" in line:
-                        if "return" in line:
-                            new_lines.append("    return -EOPNOTSUPP;\n")
-                        elif "=" in line and ("iopoll" in line or "remap_file_range" in line):
-                            new_lines.append("    /* disabled for kernel 4.19 */\n")
-                        elif "if" in line and "REMAP_FILE_DEDUP" in line:
-                            new_lines.append("    if (0) {\n")
-                        else:
-                            new_lines.append("    /* " + line.strip() + " */\n")
-                    else:
-                        new_lines.append(line)
                 with open(path, "w") as f:
-                    f.writelines(new_lines)
-                print("Patched file_wrapper.c successfully at:", path)
+                    f.write("""
+                    #include <linux/version.h>
+                    #include <linux/types.h>
+                    #include <linux/fs.h>
+                    
+                    int ksu_init_file_wrapper(void) {
+                        return 0;
+                    }
+                    void ksu_exit_file_wrapper(void) {
+                    }
+                    """)
+                print("Safely stubbed file_wrapper.c at:", path)
         '
 
         echo "[-] Cloning and applying SUSFS patches for Non-GKI kernel..."
