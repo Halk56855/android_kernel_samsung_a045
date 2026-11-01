@@ -31,7 +31,7 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing MODULE_IMPORT_NS, static_assert, pgtable.h, su_mount_ns.c & stubbing unsupported infra/manager files)..."
+        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing allowlist.c, MODULE_IMPORT_NS, static_assert, pgtable.h, su_mount_ns.c & stubbing unsupported files)..."
         if [ -f "./drivers/kernelsu/core/init.c" ]; then
           sed -i '/MODULE_IMPORT_NS/d' ./drivers/kernelsu/core/init.c
         elif [ -f "./KernelSU/kernel/core/init.c" ]; then
@@ -74,6 +74,27 @@ jobs:
                 with open(path, "w") as f:
                     f.write(content)
                 print("Patched su_mount_ns.c at:", path)
+        '
+
+        # Patch allowlist.c for kernel 4.19 (defining fallthrough and TWA_RESUME)
+        python3 -c '
+        import os
+        for path in ["./drivers/kernelsu/policy/allowlist.c", "./KernelSU/kernel/policy/allowlist.c"]:
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    content = f.read()
+                fix_headers = """
+                #ifndef fallthrough
+                #define fallthrough
+                #endif
+                #ifndef TWA_RESUME
+                #define TWA_RESUME 1
+                #endif
+                """
+                content = fix_headers + content
+                with open(path, "w") as f:
+                    f.write(content)
+                print("Patched allowlist.c at:", path)
         '
 
         # Safely stub out file_wrapper.c for kernel 4.19
@@ -125,7 +146,7 @@ jobs:
                 print("Safely stubbed pkg_observer.c at:", path)
         '
 
-        # Safely stub out dynamic_manager.c for kernel 4.19 (missing TWA_RESUME)
+        # Safely stub out dynamic_manager.c for kernel 4.19
         python3 -c '
         import os
         for path in ["./drivers/kernelsu/manager/dynamic_manager.c", "./KernelSU/kernel/manager/dynamic_manager.c"]:
