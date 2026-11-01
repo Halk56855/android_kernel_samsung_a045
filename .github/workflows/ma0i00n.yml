@@ -44,6 +44,12 @@ jobs:
           sed -i '/static_assert/d' ./KernelSU/kernel/feature/netisolate.c
         fi
 
+        if [ -f "./drivers/kernelsu/feature/uts_view.c" ]; then
+          sed -i '/static_assert/d' ./drivers/kernelsu/feature/uts_view.c
+        elif [ -f "./KernelSU/kernel/feature/uts_view.c" ]; then
+          sed -i '/static_assert/d' ./KernelSU/kernel/feature/uts_view.c
+        fi
+
         # معالجة مشكلة pgtable.h لنواة 4.19 باستبدالها بـ asm/pgtable.h مباشرة
         SUCOMPAT_PATH=""
         if [ -f "./drivers/kernelsu/feature/sucompat.c" ]; then
