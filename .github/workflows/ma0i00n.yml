@@ -31,7 +31,7 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing allowlist.c, app_profile.c, rules.c, sepolicy.c, MODULE_IMPORT_NS, static_assert, pgtable.h, su_mount_ns.c & stubbing unsupported files)..."
+        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing allowlist.c, app_profile.c, rules.c, sepolicy.c, sulog/event.c, MODULE_IMPORT_NS, static_assert, pgtable.h, su_mount_ns.c & stubbing unsupported files)..."
         if [ -f "./drivers/kernelsu/core/init.c" ]; then
           sed -i '/MODULE_IMPORT_NS/d' ./drivers/kernelsu/core/init.c
         elif [ -f "./KernelSU/kernel/core/init.c" ]; then
@@ -131,6 +131,19 @@ jobs:
                     int ksu_selinux_allow(const char *sall, const char *tclass, const char *perm) { return 0; }
                     """)
                 print("Safely stubbed sepolicy.c at:", path)
+        '
+
+        # Patch sulog/event.c for kernel 4.19 (fixing missing linux/minmax.h)
+        python3 -c '
+        import os
+        for path in ["./drivers/kernelsu/sulog/event.c", "./KernelSU/kernel/sulog/event.c"]:
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    content = f.read()
+                content = content.replace("#include <linux/minmax.h>", "#include <linux/kernel.h>")
+                with open(path, "w") as f:
+                    f.write(content)
+                print("Patched sulog/event.c at:", path)
         '
 
         # Patch allowlist.c for kernel 4.19 (defining fallthrough and TWA_RESUME)
