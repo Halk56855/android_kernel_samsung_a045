@@ -31,7 +31,7 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing allowlist.c, app_profile.c, rules.c, sepolicy.c, sulog/event.c, MODULE_IMPORT_NS, static_assert, pgtable.h, su_mount_ns.c & stubbing unsupported files)..."
+        echo "[-] Patching FinaSU for older kernel 4.19 (Fixing allowlist.c, app_profile.c, rules.c, sepolicy.c, sulog/event.c, dispatch.c, MODULE_IMPORT_NS, static_assert, pgtable.h, su_mount_ns.c & stubbing unsupported files)..."
         if [ -f "./drivers/kernelsu/core/init.c" ]; then
           sed -i '/MODULE_IMPORT_NS/d' ./drivers/kernelsu/core/init.c
         elif [ -f "./KernelSU/kernel/core/init.c" ]; then
@@ -144,6 +144,25 @@ jobs:
                 with open(path, "w") as f:
                     f.write(content)
                 print("Patched sulog/event.c at:", path)
+        '
+
+        # Patch dispatch.c for kernel 4.19 (fixing undeclared tasklist_lock and init_task)
+        python3 -c '
+        import os
+        for path in ["./drivers/kernelsu/supercall/dispatch.c", "./KernelSU/kernel/supercall/dispatch.c"]:
+            if os.path.exists(path):
+                with open(path, "r") as f:
+                    content = f.read()
+                declarations = """
+        #include <linux/sched/task.h>
+        #include <linux/sched/signal.h>
+        extern rwlock_t tasklist_lock;
+        extern struct task_struct init_task;
+                """
+                content = declarations + content
+                with open(path, "w") as f:
+                    f.write(content)
+                print("Patched dispatch.c at:", path)
         '
 
         # Patch allowlist.c for kernel 4.19 (defining fallthrough and TWA_RESUME)
