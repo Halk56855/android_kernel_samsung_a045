@@ -31,7 +31,7 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Patching FinaSU for older kernel 4.19..."
+        echo "[-] Patching FinaSU nolibc and files for older kernel 4.19..."
         if [ -f "./drivers/kernelsu/core/init.c" ]; then
           sed -i '/MODULE_IMPORT_NS/d' ./drivers/kernelsu/core/init.c
         elif [ -f "./KernelSU/kernel/core/init.c" ]; then
@@ -70,6 +70,31 @@ jobs:
                 content = content.replace("#include <uapi/linux/mount.h>", "#include <linux/mount.h>")
                 with open(path, "w") as f:
                     f.write(content)
+        '
+
+        # Patch FinaSU nolibc sys.h (fixing clone3 for old kernels) and missing linux/mount.h
+        python3 -c '
+        import os
+        for base_dir in ["./drivers/kernelsu/preinit/runner/nolibc", "./KernelSU/kernel/preinit/runner/nolibc"]:
+            if os.path.exists(base_dir):
+                sys_h_path = os.path.join(base_dir, "sys.h")
+                if os.path.exists(sys_h_path):
+                    with open(sys_h_path, "r") as f:
+                        content = f.read()
+                    # Make clone3 return -ENOSYS (-38) if __NR_clone3 is missing
+                    if "clone3" in content and "__NR_clone3" not in content:
+                        content = content.replace("struct clone_args args =", "#ifndef __NR_clone3\n\treturn -38;\n#else\n\tstruct clone_args args =")
+                        content = content.replace("return my_syscall2(__NR_clone3, &args, sizeof(args));", "return my_syscall2(__NR_clone3, &args, sizeof(args));\n#endif")
+                    with open(sys_h_path, "w") as f:
+                        f.write(content)
+                    print("Patched sys.h at:", sys_h_path)
+
+                os.makedirs(os.path.join(base_dir, "linux"), exist_ok=True)
+                linux_mount_h = os.path.join(base_dir, "linux", "mount.h")
+                if not os.path.exists(linux_mount_h):
+                    with open(linux_mount_h, "w") as f:
+                        f.write("/* dummy linux/mount.h for nolibc on old kernel */\n#include <sys/mount.h>\n")
+                    print("Created dummy linux/mount.h at:", linux_mount_h)
         '
 
         python3 -c '
@@ -121,7 +146,6 @@ jobs:
                     """)
         '
 
-        # Safely stub out selinux_hide.c for kernel 4.19 (fixing missing struct selinux_state members)
         python3 -c '
         import os
         for path in ["./drivers/kernelsu/feature/selinux_hide.c", "./KernelSU/kernel/feature/selinux_hide.c"]:
@@ -133,7 +157,6 @@ jobs:
                     int ksu_selinux_hide_init(void) { return 0; }
                     void ksu_selinux_hide_exit(void) {}
                     """)
-                print("Safely stubbed selinux_hide.c at:", path)
         '
 
         python3 -c '
