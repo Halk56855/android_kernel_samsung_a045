@@ -31,7 +31,7 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Patching FinaSU nolibc clone3 and files for older kernel 4.19..."
+        echo "[-] Patching FinaSU nolibc clone3 definitions for older kernel 4.19..."
         if [ -f "./drivers/kernelsu/core/init.c" ]; then
           sed -i '/MODULE_IMPORT_NS/d' ./drivers/kernelsu/core/init.c
         elif [ -f "./KernelSU/kernel/core/init.c" ]; then
@@ -72,7 +72,7 @@ jobs:
                     f.write(content)
         '
 
-        # Forcefully stub out sys_clone3 in nolibc sys.h for old kernels
+        # Inject clone_args definition and __NR_clone3 into nolibc sys.h for old kernels
         python3 -c '
         import os
         for base_dir in ["./drivers/kernelsu/preinit/runner/nolibc", "./KernelSU/kernel/preinit/runner/nolibc"]:
@@ -82,19 +82,33 @@ jobs:
                     with open(sys_h_path, "r") as f:
                         content = f.read()
                     
-                    # Replace sys_clone3 implementation completely to avoid struct clone_args error
-                    old_clone3 = """static __attribute__((unused)) int sys_clone3(struct clone_args *args, size_t size)"""
-                    if old_clone3 in content:
-                        # Find and replace the function body
-                        idx = content.find(old_clone3)
-                        end_idx = content.find("}", idx)
-                        if idx != -1 and end_idx != -1:
-                            replacement = "static __attribute__((unused)) int sys_clone3(void *args, size_t size) { return -38; }"
-                            content = content[:idx] + replacement + content[end_idx+1:]
-                    
-                    with open(sys_h_path, "w") as f:
-                        f.write(content)
-                    print("Successfully patched sys_clone3 in:", sys_h_path)
+                    patch_snippet = """
+#ifndef __NR_clone3
+#define __NR_clone3 435
+#endif
+
+#ifndef HAVE_STRUCT_CLONE_ARGS
+#define HAVE_STRUCT_CLONE_ARGS
+struct clone_args {
+    unsigned long flags;
+    unsigned long pidfd;
+    unsigned long child_tid;
+    unsigned long parent_tid;
+    unsigned long exit_signal;
+    unsigned long stack;
+    unsigned long stack_size;
+    unsigned long tls;
+    unsigned long set_tid;
+    unsigned long set_tid_size;
+    unsigned long cgroup;
+};
+#endif
+"""
+                    if "struct clone_args" not in content:
+                        content = patch_snippet + content
+                        with open(sys_h_path, "w") as f:
+                            f.write(content)
+                        print("Injected clone_args into:", sys_h_path)
 
                 os.makedirs(os.path.join(base_dir, "linux"), exist_ok=True)
                 linux_mount_h = os.path.join(base_dir, "linux", "mount.h")
