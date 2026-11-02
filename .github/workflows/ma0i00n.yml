@@ -121,6 +121,21 @@ jobs:
                     """)
         '
 
+        # Safely stub out selinux_hide.c for kernel 4.19 (fixing missing struct selinux_state members)
+        python3 -c '
+        import os
+        for path in ["./drivers/kernelsu/feature/selinux_hide.c", "./KernelSU/kernel/feature/selinux_hide.c"]:
+            if os.path.exists(path):
+                with open(path, "w") as f:
+                    f.write("""
+                    #include <linux/version.h>
+                    #include <linux/types.h>
+                    int ksu_selinux_hide_init(void) { return 0; }
+                    void ksu_selinux_hide_exit(void) {}
+                    """)
+                print("Safely stubbed selinux_hide.c at:", path)
+        '
+
         python3 -c '
         import os
         for path in ["./drivers/kernelsu/sulog/event.c", "./KernelSU/kernel/sulog/event.c"]:
