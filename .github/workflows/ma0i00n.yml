@@ -61,7 +61,7 @@ jobs:
           sed -i 's|#include <linux/pgtable.h>|#include <asm/pgtable.h>|g' "$SUCOMPAT_PATH"
         fi
 
-        python3 -c '
+        python3 - << 'EOF'
         import os
         for path in ["./drivers/kernelsu/infra/su_mount_ns.c", "./KernelSU/kernel/infra/su_mount_ns.c"]:
             if os.path.exists(path):
@@ -70,10 +70,9 @@ jobs:
                 content = content.replace("#include <uapi/linux/mount.h>", "#include <linux/mount.h>")
                 with open(path, "w") as f:
                     f.write(content)
-        '
+        EOF
 
-        # Inject clone_args definition and __NR_clone3 into nolibc sys.h for old kernels
-        python3 -c '
+        python3 - << 'EOF'
         import os
         for base_dir in ["./drivers/kernelsu/preinit/runner/nolibc", "./KernelSU/kernel/preinit/runner/nolibc"]:
             if os.path.exists(base_dir):
@@ -115,9 +114,9 @@ struct clone_args {
                 if not os.path.exists(linux_mount_h):
                     with open(linux_mount_h, "w") as f:
                         f.write("/* dummy linux/mount.h for nolibc on old kernel */\n#include <sys/mount.h>\n")
-        '
+        EOF
 
-        python3 -c '
+        python3 - << 'EOF'
         import os
         for path in ["./drivers/kernelsu/policy/app_profile.c", "./KernelSU/kernel/policy/app_profile.c"]:
             if os.path.exists(path):
@@ -138,9 +137,9 @@ struct clone_args {
                     content = content.replace(target, replacement)
                     with open(path, "w") as f:
                         f.write(content)
-        '
+        EOF
 
-        python3 -c '
+        python3 - << 'EOF'
         import os
         for path in ["./drivers/kernelsu/selinux/rules.c", "./KernelSU/kernel/selinux/rules.c"]:
             if os.path.exists(path):
@@ -152,9 +151,9 @@ struct clone_args {
                     void ksu_selinux_exit(void) {}
                     int ksu_apply_custom_con(void) { return 0; }
                     """)
-        '
+        EOF
 
-        python3 -c '
+        python3 - << 'EOF'
         import os
         for path in ["./drivers/kernelsu/selinux/sepolicy.c", "./KernelSU/kernel/selinux/sepolicy.c"]:
             if os.path.exists(path):
@@ -164,9 +163,9 @@ struct clone_args {
                     #include <linux/types.h>
                     int ksu_selinux_allow(const char *sall, const char *tclass, const char *perm) { return 0; }
                     """)
-        '
+        EOF
 
-        python3 -c '
+        python3 - << 'EOF'
         import os
         for path in ["./drivers/kernelsu/feature/selinux_hide.c", "./KernelSU/kernel/feature/selinux_hide.c"]:
             if os.path.exists(path):
@@ -177,9 +176,9 @@ struct clone_args {
                     int ksu_selinux_hide_init(void) { return 0; }
                     void ksu_selinux_hide_exit(void) {}
                     """)
-        '
+        EOF
 
-        python3 -c '
+        python3 - << 'EOF'
         import os
         for path in ["./drivers/kernelsu/sulog/event.c", "./KernelSU/kernel/sulog/event.c"]:
             if os.path.exists(path):
@@ -188,9 +187,9 @@ struct clone_args {
                 content = content.replace("#include <linux/minmax.h>", "#include <linux/kernel.h>")
                 with open(path, "w") as f:
                     f.write(content)
-        '
+        EOF
 
-        python3 -c '
+        python3 - << 'EOF'
         import os
         for path in ["./drivers/kernelsu/supercall/dispatch.c", "./KernelSU/kernel/supercall/dispatch.c"]:
             if os.path.exists(path):
@@ -205,9 +204,9 @@ struct clone_args {
                 content = declarations + content
                 with open(path, "w") as f:
                     f.write(content)
-        '
+        EOF
 
-        python3 -c '
+        python3 - << 'EOF'
         import os
         for path in ["./drivers/kernelsu/supercall/supercall.c", "./KernelSU/kernel/supercall/supercall.c"]:
             if os.path.exists(path):
@@ -216,9 +215,9 @@ struct clone_args {
                 content = content.replace("TWA_RESUME", "1")
                 with open(path, "w") as f:
                     f.write(content)
-        '
+        EOF
 
-        python3 -c '
+        python3 - << 'EOF'
         import os
         for path in ["./drivers/kernelsu/policy/allowlist.c", "./KernelSU/kernel/policy/allowlist.c"]:
             if os.path.exists(path):
@@ -233,9 +232,9 @@ struct clone_args {
                 content = content.replace("TWA_RESUME", "1")
                 with open(path, "w") as f:
                     f.write(content)
-        '
+        EOF
 
-        python3 -c '
+        python3 - << 'EOF'
         import os
         for path in ["./drivers/kernelsu/infra/file_wrapper.c", "./KernelSU/kernel/infra/file_wrapper.c"]:
             if os.path.exists(path):
@@ -247,9 +246,9 @@ struct clone_args {
                     int ksu_init_file_wrapper(void) { return 0; }
                     void ksu_exit_file_wrapper(void) {}
                     """)
-        '
+        EOF
 
-        python3 -c '
+        python3 - << 'EOF'
         import os
         for path in ["./drivers/kernelsu/infra/seccomp_cache.c", "./KernelSU/kernel/infra/seccomp_cache.c"]:
             if os.path.exists(path):
@@ -260,9 +259,9 @@ struct clone_args {
                     int ksu_init_seccomp_cache(void) { return 0; }
                     void ksu_exit_seccomp_cache(void) {}
                     """)
-        '
+        EOF
 
-        python3 -c '
+        python3 - << 'EOF'
         import os
         for path in ["./drivers/kernelsu/manager/pkg_observer.c", "./KernelSU/kernel/manager/pkg_observer.c"]:
             if os.path.exists(path):
@@ -273,9 +272,9 @@ struct clone_args {
                     int ksu_init_pkg_observer(void) { return 0; }
                     void ksu_exit_pkg_observer(void) {}
                     """)
-        '
+        EOF
 
-        python3 -c '
+        python3 - << 'EOF'
         import os
         for path in ["./drivers/kernelsu/manager/dynamic_manager.c", "./KernelSU/kernel/manager/dynamic_manager.c"]:
             if os.path.exists(path):
@@ -286,7 +285,7 @@ struct clone_args {
                     int ksu_init_dynamic_manager(void) { return 0; }
                     void ksu_exit_dynamic_manager(void) {}
                     """)
-        '
+        EOF
 
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
