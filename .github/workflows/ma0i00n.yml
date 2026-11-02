@@ -31,7 +31,7 @@ jobs:
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
 
-        echo "[-] Patching FinaSU nolibc and files for older kernel 4.19..."
+        echo "[-] Patching FinaSU nolibc clone3 and files for older kernel 4.19..."
         if [ -f "./drivers/kernelsu/core/init.c" ]; then
           sed -i '/MODULE_IMPORT_NS/d' ./drivers/kernelsu/core/init.c
         elif [ -f "./KernelSU/kernel/core/init.c" ]; then
@@ -72,7 +72,7 @@ jobs:
                     f.write(content)
         '
 
-        # Patch FinaSU nolibc sys.h (fixing clone3 for old kernels) and missing linux/mount.h
+        # Forcefully stub out sys_clone3 in nolibc sys.h for old kernels
         python3 -c '
         import os
         for base_dir in ["./drivers/kernelsu/preinit/runner/nolibc", "./KernelSU/kernel/preinit/runner/nolibc"]:
@@ -81,20 +81,26 @@ jobs:
                 if os.path.exists(sys_h_path):
                     with open(sys_h_path, "r") as f:
                         content = f.read()
-                    # Make clone3 return -ENOSYS (-38) if __NR_clone3 is missing
-                    if "clone3" in content and "__NR_clone3" not in content:
-                        content = content.replace("struct clone_args args =", "#ifndef __NR_clone3\n\treturn -38;\n#else\n\tstruct clone_args args =")
-                        content = content.replace("return my_syscall2(__NR_clone3, &args, sizeof(args));", "return my_syscall2(__NR_clone3, &args, sizeof(args));\n#endif")
+                    
+                    # Replace sys_clone3 implementation completely to avoid struct clone_args error
+                    old_clone3 = """static __attribute__((unused)) int sys_clone3(struct clone_args *args, size_t size)"""
+                    if old_clone3 in content:
+                        # Find and replace the function body
+                        idx = content.find(old_clone3)
+                        end_idx = content.find("}", idx)
+                        if idx != -1 and end_idx != -1:
+                            replacement = "static __attribute__((unused)) int sys_clone3(void *args, size_t size) { return -38; }"
+                            content = content[:idx] + replacement + content[end_idx+1:]
+                    
                     with open(sys_h_path, "w") as f:
                         f.write(content)
-                    print("Patched sys.h at:", sys_h_path)
+                    print("Successfully patched sys_clone3 in:", sys_h_path)
 
                 os.makedirs(os.path.join(base_dir, "linux"), exist_ok=True)
                 linux_mount_h = os.path.join(base_dir, "linux", "mount.h")
                 if not os.path.exists(linux_mount_h):
                     with open(linux_mount_h, "w") as f:
                         f.write("/* dummy linux/mount.h for nolibc on old kernel */\n#include <sys/mount.h>\n")
-                    print("Created dummy linux/mount.h at:", linux_mount_h)
         '
 
         python3 -c '
