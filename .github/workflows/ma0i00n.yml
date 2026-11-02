@@ -45,7 +45,7 @@ jobs:
                 with open(path, "w") as f:
                     f.write(content)
 
-        # 2. nolibc sys.h & linux/mount.h (Stubbing out clone3 to avoid struct clone_args error)
+        # 2. nolibc sys.h & linux/mount.h (Robustly stubbing out clone3 block)
         for base_dir in ["./drivers/kernelsu/preinit/runner/nolibc", "./KernelSU/kernel/preinit/runner/nolibc"]:
             if os.path.exists(base_dir):
                 sys_h_path = os.path.join(base_dir, "sys.h")
@@ -53,24 +53,30 @@ jobs:
                     with open(sys_h_path, "r") as f:
                         content = f.read()
                     
-                    # Replace sys_clone3 definition entirely with a safe stub returning -38 (-ENOSYS)
-                    stub_clone3 = "static __attribute__((unused)) int sys_clone3(void *args, size_t size) { return -38; }"
+                    stub_clone3 = "\nstatic __attribute__((unused)) int sys_clone3(void *args, size_t size) { return -38; }\n"
                     
-                    # Try to regex replace sys_clone3 function if it exists
                     if "sys_clone3" in content:
-                        content = re.sub(
-                            r'static\s+__attribute__\s*\([^)]*\)\s*int\s+sys_clone3\s*\([^}]*?\}',
-                            stub_clone3,
-                            content,
-                            flags=re.DOTALL
-                        )
-                        if "sys_clone3" in content: # Fallback simple replacement if regex missed
-                            content = content.replace("int sys_clone3", "int _old_sys_clone3")
-                            content += "\n" + stub_clone3 + "\n"
+                        idx = content.find("sys_clone3")
+                        start_idx = content.rfind("static", 0, idx)
+                        if start_idx != -1:
+                            brace_count = 0
+                            end_idx = start_idx
+                            in_func = False
+                            for i in range(start_idx, len(content)):
+                                if content[i] == '{':
+                                    brace_count += 1
+                                    in_func = True
+                                elif content[i] == '}':
+                                    brace_count -= 1
+                                    if in_func and brace_count == 0:
+                                        end_idx = i + 1
+                                        break
+                            if end_idx > start_idx:
+                                content = content[:start_idx] + stub_clone3 + content[end_idx:]
 
                     with open(sys_h_path, "w") as f:
                         f.write(content)
-                    print("Successfully stubbed sys_clone3 in:", sys_h_path)
+                    print("Successfully stubbed sys_clone3 via brace-matching in:", sys_h_path)
 
                 os.makedirs(os.path.join(base_dir, "linux"), exist_ok=True)
                 linux_mount_h = os.path.join(base_dir, "linux", "mount.h")
