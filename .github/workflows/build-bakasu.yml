@@ -1,0 +1,151 @@
+name: TouchDirt - Build BakaSU
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "TouchDirt version"
+        required: true
+        type: string
+        default: "v1.0.3"
+      bakasu_sha:
+        description: "Exact BakaSU commit to build (leave empty for latest main)"
+        required: false
+        type: string
+        default: ""
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      bakasu_sha:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  resolve-bakasu:
+    name: Resolve BakaSU revision
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - name: Resolve exact BakaSU commit
+        id: resolve
+        env:
+          REQUESTED_SHA: ${{ inputs.bakasu_sha }}
+        run: |
+          SHA="$REQUESTED_SHA"
+          if [ -z "$SHA" ]; then
+            SHA=$(git ls-remote https://github.com/Baka-SU/BakaSU.git refs/heads/main | awk '{print $1}')
+          fi
+
+          if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: Could not resolve a valid BakaSU commit SHA: $SHA"
+            exit 1
+          fi
+
+          echo "Building BakaSU commit: $SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+  bakasu-enforcing:
+    name: BakaSU - Enforcing
+    needs: resolve-bakasu
+    uses: ./.github/workflows/bakasu-enforcing.yml
+    with:
+      version: ${{ inputs.version }}
+      bakasu_sha: ${{ needs.resolve-bakasu.outputs.sha }}
+
+  bakasu-permissive:
+    name: BakaSU - Permissive
+    needs: resolve-bakasu
+    uses: ./.github/workflows/bakasu-permissive.yml
+    with:
+      version: ${{ inputs.version }}
+      bakasu_sha: ${{ needs.resolve-bakasu.outputs.sha }}
+
+  release:
+    name: Publish Release Assets
+    needs:
+      - resolve-bakasu
+      - bakasu-enforcing
+      - bakasu-permissive
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: v1.0.3
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8.0.1
+        with:
+          path: release-assets
+
+      - name: List release assets
+        run: find release-assets -type f -print
+
+      - name: Resolve release metadata
+        id: metadata
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          BAKASU_SHA: ${{ needs.resolve-bakasu.outputs.sha }}
+        run: |
+          VERSION="$REQUESTED_VERSION"
+          if [ -z "$VERSION" ]; then
+            echo "ERROR: Release version is empty."
+            exit 1
+          fi
+
+          printf '%s\n' "$BAKASU_SHA" > release-assets/bakasu-commit.txt
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Update the fixed release without moving its tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          if ! gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$VERSION" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target v1.0.3 \
+              --title "TouchDirt $VERSION" \
+              --notes-file ".github/release-notes/$VERSION.md"
+          fi
+
+          # Replace only the dated kernel ZIPs and BakaSU revision marker.
+          # Keep BakaSU-Manager.apk and any unrelated release assets intact.
+          ASSETS=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" --jq '.assets[].name')
+          while IFS= read -r ASSET; do
+            [ -z "$ASSET" ] && continue
+            case "$ASSET" in
+              TouchDirt-BakaSU-*.zip|bakasu-commit.txt)
+                gh release delete-asset "$VERSION" "$ASSET" --repo "$GITHUB_REPOSITORY" --yes
+                ;;
+            esac
+          done <<< "$ASSETS"
+
+          shopt -s nullglob
+          ZIPS=(release-assets/*/*.zip)
+          if [ "${#ZIPS[@]}" -ne 2 ]; then
+            echo "ERROR: Expected exactly two kernel ZIPs, found ${#ZIPS[@]}."
+            printf '%s\n' "${ZIPS[@]}"
+            exit 1
+          fi
+
+          gh release upload "$VERSION" "${ZIPS[@]}" release-assets/bakasu-commit.txt \
+            --repo "$GITHUB_REPOSITORY"
+
+  bakasu-manager:
+    name: BakaSU Manager
+    needs:
+      - release
+      - resolve-bakasu
+    uses: ./.github/workflows/update-bakasu-manager.yml
+    with:
+      bakasu_sha: ${{ needs.resolve-bakasu.outputs.sha }}

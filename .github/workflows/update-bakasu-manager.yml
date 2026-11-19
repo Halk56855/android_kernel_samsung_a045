@@ -1,8 +1,12 @@
-name: Sync ReSukiSU Manager
+name: Sync BakaSU Manager
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
   workflow_call:
+    inputs:
+      bakasu_sha:
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -10,18 +14,21 @@ permissions:
 
 jobs:
   sync-manager:
-    name: Update ReSukiSU Manager
+    name: Update BakaSU Manager
     runs-on: ubuntu-latest
 
     steps:
-      - name: Get latest ReSukiSU main commit
+      - name: Get latest BakaSU main commit
         id: resukisu
         run: |
-          SHA=$(git ls-remote \
-            https://github.com/ReSukiSU/ReSukiSU.git \
-            refs/heads/main | awk '{print $1}')
+          SHA="${{ inputs.bakasu_sha }}"
+          if [ -z "$SHA" ]; then
+            SHA=$(git ls-remote \
+              https://github.com/Baka-SU/BakaSU.git \
+              refs/heads/main | awk '{print $1}')
+          fi
 
-          echo "ReSukiSU main: $SHA"
+          echo "BakaSU main: $SHA"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
       - name: Find matching manager build
@@ -32,7 +39,7 @@ jobs:
           SHA="${{ steps.resukisu.outputs.sha }}"
 
           RUN_ID=$(gh api \
-            "repos/ReSukiSU/ReSukiSU/actions/workflows/build-manager.yml/runs?head_sha=${SHA}&status=success&per_page=1" \
+            "repos/Baka-SU/BakaSU/actions/workflows/build-manager.yml/runs?head_sha=${SHA}&status=success&per_page=1" \
             --jq '.workflow_runs[0].id // empty')
 
           if [ -z "$RUN_ID" ]; then
@@ -40,12 +47,12 @@ jobs:
             echo "Falling back to latest successful main build..."
 
             RUN_ID=$(gh api \
-              "repos/ReSukiSU/ReSukiSU/actions/workflows/build-manager.yml/runs?branch=main&status=success&per_page=1" \
+              "repos/Baka-SU/BakaSU/actions/workflows/build-manager.yml/runs?branch=main&status=success&per_page=1" \
               --jq '.workflow_runs[0].id // empty')
           fi
 
           if [ -z "$RUN_ID" ]; then
-            echo "ERROR: Could not find a successful ReSukiSU manager build."
+            echo "ERROR: Could not find a successful BakaSU manager build."
             exit 1
           fi
 
@@ -60,7 +67,7 @@ jobs:
 
           gh run download \
             "${{ steps.build.outputs.run_id }}" \
-            --repo ReSukiSU/ReSukiSU \
+            --repo Baka-SU/BakaSU \
             --name Manager-release \
             --dir manager
 
@@ -80,10 +87,10 @@ jobs:
             exit 1
           fi
 
-          cp "${APKS[0]}" ReSukiSU-Manager.apk
+          cp "${APKS[0]}" BakaSU-Manager.apk
 
           echo "Selected ARM64 manager:"
-          ls -lh ReSukiSU-Manager.apk
+          ls -lh BakaSU-Manager.apk
 
       - name: Find latest TouchDirt release
         id: release
@@ -106,12 +113,12 @@ jobs:
           echo "Latest TouchDirt release: $TAG"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Upload ReSukiSU Manager
+      - name: Upload BakaSU Manager
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload \
             "${{ steps.release.outputs.tag }}" \
-            ReSukiSU-Manager.apk \
+            BakaSU-Manager.apk \
             --repo "${{ github.repository }}" \
             --clobber

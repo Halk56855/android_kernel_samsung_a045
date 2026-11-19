@@ -7,7 +7,7 @@ on:
         description: "TouchDirt version"
         required: true
         type: string
-        default: "v1.0.1"
+        default: "v1.x.x"
 
 permissions:
   contents: write
@@ -26,15 +26,15 @@ jobs:
     with:
       version: ${{ inputs.version }}
 
-  resukisu-enforcing:
-    name: ReSukiSU - Enforcing
-    uses: ./.github/workflows/resukisu-enforcing.yml
+  bakasu-enforcing:
+    name: BakaSU - Enforcing
+    uses: ./.github/workflows/bakasu-enforcing.yml
     with:
       version: ${{ inputs.version }}
 
-  resukisu-permissive:
-    name: ReSukiSU - Permissive
-    uses: ./.github/workflows/resukisu-permissive.yml
+  bakasu-permissive:
+    name: BakaSU - Permissive
+    uses: ./.github/workflows/bakasu-permissive.yml
     with:
       version: ${{ inputs.version }}
 
@@ -43,8 +43,8 @@ jobs:
     needs:
       - vanilla-enforcing
       - vanilla-permissive
-      - resukisu-enforcing
-      - resukisu-permissive
+      - bakasu-enforcing
+      - bakasu-permissive
 
     runs-on: ubuntu-latest
 
@@ -86,8 +86,8 @@ jobs:
             --title "TouchDirt $VERSION" \
             --notes-file ".github/release-notes/${VERSION}.md"
 
-  resukisu-manager:
-    name: ReSukiSU Manager
+  bakasu-manager:
+    name: BakaSU Manager
     needs:
       - release
-    uses: ./.github/workflows/update-resukisu-manager.yml
+    uses: ./.github/workflows/update-bakasu-manager.yml

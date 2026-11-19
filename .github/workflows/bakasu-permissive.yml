@@ -1,9 +1,11 @@
-name: Build TouchDirt Kernel, ReSukiSU, Enforcing
+name: Build TouchDirt Kernel, BakaSU, Permissive
 on:
-  workflow_dispatch:
   workflow_call:
     inputs:
       version:
+        required: true
+        type: string
+      bakasu_sha:
         required: true
         type: string
 
@@ -12,19 +14,25 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-    - name: Checkout source
+    - name: Checkout frozen kernel source
       uses: actions/checkout@v7.0.1
+      with:
+        ref: v1.0.3
 
-    - name: Integrating ReSukiSU
+    - name: Integrating pinned BakaSU revision
+      env:
+        BAKASU_SHA: ${{ inputs.bakasu_sha }}
       run: |
-        echo "[-] Cloning ReSukiSU repo..."
-        git clone -b main https://github.com/ReSukiSU/ReSukiSU.git KernelSU
+        echo "[-] Cloning BakaSU repo at $BAKASU_SHA..."
+        git clone https://github.com/Baka-SU/BakaSU.git KernelSU
+        git -C KernelSU checkout "$BAKASU_SHA"
 
-        echo "[-] Setup ReSukiSU..."
+        echo "[-] Setup BakaSU..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
         rm -rf KernelSU
-        git clone -b main https://github.com/ReSukiSU/ReSukiSU.git KernelSU
+        git clone https://github.com/Baka-SU/BakaSU.git KernelSU
+        git -C KernelSU checkout "$BAKASU_SHA"
 
     - name: SUSFS
       run: |
@@ -85,8 +93,8 @@ jobs:
       run: |
         make -C $(pwd) O=$(pwd)/out touchdirt-a04_defconfig
 
-        if [ -f "arch/arm64/configs/touchdirt.config" ]; then
-          ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
+        if [ -f "arch/arm64/configs/touchdirt-permissive.config" ]; then
+          ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt-permissive.config
         fi
 
         grep '^CONFIG_LOCALVERSION=' out/.config
@@ -94,9 +102,9 @@ jobs:
         sed -i 's/CONFIG_IKHEADERS=y/CONFIG_IKHEADERS=n/g' $(pwd)/out/.config
 
         if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-ReSukiSU-${{ inputs.version }}\"/" out/.config
+            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-BakaSU-PERMISSIVE-${{ inputs.version }}\"/" out/.config
         else
-            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-ReSukiSU-BETA\"/" out/.config
+            sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-BakaSU-PERMISSIVE-BETA\"/" out/.config
         fi
 
         make -C $(pwd) O=$(pwd)/out olddefconfig
@@ -123,10 +131,10 @@ jobs:
         cp out/arch/arm64/boot/Image AnyKernel3/Image
 
         cd AnyKernel3
-        zip -r9 "../TouchDirt-ReSukiSU-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
+        zip -r9 "../TouchDirt-BakaSU-${{ steps.version.outputs.version }}-${DATE}-Permissive.zip" . -x ".git/*"
 
     - name: Upload AnyKernel3 ZIP
       uses: actions/upload-artifact@v7.0.1
       with:
-        name: TouchDirt-ReSukiSU-Enforcing
+        name: TouchDirt-BakaSU-Permissive
         path: TouchDirt-*.zip

@@ -1,0 +1,76 @@
+name: TouchDirt - Constant BakaSU Builds
+
+on:
+  schedule:
+    # 00:00 Asia/Jakarta (UTC+7)
+    - cron: "0 17 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: constant-bakasu-v1.0.3
+  cancel-in-progress: false
+
+jobs:
+  check-upstream:
+    name: Check for a new BakaSU revision
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+      sha: ${{ steps.compare.outputs.sha }}
+    steps:
+      - name: Get latest BakaSU main commit
+        id: upstream
+        run: |
+          SHA=$(git ls-remote https://github.com/Baka-SU/BakaSU.git refs/heads/main | awk '{print $1}')
+
+          if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: Could not resolve BakaSU main."
+            exit 1
+          fi
+
+          echo "Latest BakaSU main: $SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Compare with the last published BakaSU revision
+        id: compare
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST_SHA: ${{ steps.upstream.outputs.sha }}
+        run: |
+          mkdir -p previous
+
+          if gh release download v1.0.3 \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern bakasu-commit.txt \
+            --dir previous; then
+            LAST_SHA=$(tr -d '[:space:]' < previous/bakasu-commit.txt)
+          else
+            echo "No previous BakaSU revision marker found. A first build is required."
+            LAST_SHA=""
+          fi
+
+          echo "Previously published: ${LAST_SHA:-none}"
+          echo "Currently upstream:  $LATEST_SHA"
+
+          if [ "$LATEST_SHA" = "$LAST_SHA" ]; then
+            echo "BakaSU has not changed. Skipping both kernel builds."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "BakaSU changed. A new pair of kernel builds is required."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "sha=$LATEST_SHA" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build both variants
+    needs: check-upstream
+    if: needs.check-upstream.outputs.changed == 'true'
+    uses: ./.github/workflows/build-bakasu.yml
+    with:
+      version: v1.0.3
+      bakasu_sha: ${{ needs.check-upstream.outputs.sha }}
