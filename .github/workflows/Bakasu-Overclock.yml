@@ -3,19 +3,6 @@ name: Build TouchDirt Kernel, BakaSU, Permissive
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: "Kernel Version"
-        required: true
-        type: string
-        default: "v1.0.3"
-      bakasu_sha:
-        description: "BakaSU Commit SHA"
-        required: true
-        type: string
-      nomount_sha:
-        description: "NoMount Commit SHA"
-        required: true
-        type: string
       enable_lto:
         description: "Enable ThinLTO"
         required: false
@@ -29,14 +16,17 @@ on:
   workflow_call:
     inputs:
       version:
-        required: true
+        required: false
         type: string
+        default: "v1.0.3"
       bakasu_sha:
-        required: true
+        required: false
         type: string
+        default: "main"
       nomount_sha:
-        required: true
+        required: false
         type: string
+        default: "main"
       enable_lto:
         required: false
         type: boolean
@@ -58,7 +48,7 @@ jobs:
 
       - name: Integrating pinned BakaSU revision
         env:
-          BAKASU_SHA: ${{ inputs.bakasu_sha }}
+          BAKASU_SHA: ${{ inputs.bakasu_sha || 'main' }}
         run: |
           echo "[-] Cloning BakaSU repo at $BAKASU_SHA..."
           rm -rf KernelSU
@@ -80,7 +70,7 @@ jobs:
 
       - name: Integrating pinned NoMount revision
         env:
-          NOMOUNT_SHA: ${{ inputs.nomount_sha }}
+          NOMOUNT_SHA: ${{ inputs.nomount_sha || 'main' }}
         run: |
           echo "[-] Cloning NoMount at $NOMOUNT_SHA..."
           rm -rf NoMount
@@ -189,10 +179,11 @@ jobs:
 
           ./scripts/config --file "$OUT_DIR/.config" -d IKHEADERS
 
+          VERSION_STR="${{ inputs.version || 'v1.0.3' }}"
           if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            LOCALVER="-TouchDirt-BakaSU-PERMISSIVE${LTO_TAG}${OC_TAG}-${{ inputs.version }}"
+            LOCALVER="-TouchDirt-BakaSU-PERMISSIVE${LTO_TAG}${OC_TAG}-${VERSION_STR}"
           else
-            LOCALVER="-TouchDirt-BakaSU-PERMISSIVE${LTO_TAG}${OC_TAG}-BETA"
+            LOCALVER="-TouchDirt-BakaSU-PERMISSIVE${LTO_TAG}${OC_TAG}-${VERSION_STR}"
           fi
 
           ./scripts/config --file "$OUT_DIR/.config" --set-str LOCALVERSION "$LOCALVER"
@@ -208,7 +199,7 @@ jobs:
       - name: Get kernel version
         id: version
         run: |
-          VERSION="${{ inputs.version }}"
+          VERSION="${{ inputs.version || 'v1.0.3' }}"
           echo "VERSION=$VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
