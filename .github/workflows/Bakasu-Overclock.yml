@@ -41,7 +41,7 @@ on:
       nomount_sha:
         required: false
         type: string
-        default: "main"
+        default: "master"
       enable_lto:
         required: false
         type: boolean
@@ -97,7 +97,7 @@ jobs:
 
       - name: Integrating pinned NoMount revision
         env:
-          NOMOUNT_SHA: ${{ inputs.nomount_sha || 'main' }}
+          NOMOUNT_SHA: ${{ inputs.nomount_sha || 'master' }}
         run: |
           echo "[-] Cloning NoMount at $NOMOUNT_SHA..."
           rm -rf NoMount
