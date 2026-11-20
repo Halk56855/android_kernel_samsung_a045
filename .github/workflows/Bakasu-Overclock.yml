@@ -1,6 +1,31 @@
 name: Build TouchDirt Kernel, BakaSU, Permissive
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Kernel Version"
+        required: true
+        type: string
+        default: "v1.0.3"
+      bakasu_sha:
+        description: "BakaSU Commit SHA"
+        required: true
+        type: string
+      nomount_sha:
+        description: "NoMount Commit SHA"
+        required: true
+        type: string
+      enable_lto:
+        description: "Enable ThinLTO"
+        required: false
+        type: boolean
+        default: true
+      enable_oc:
+        description: "Enable Overclock (CPU 2500/2000 MHz, GPU 900 MHz)"
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       version:
@@ -128,11 +153,21 @@ jobs:
           OUT_DIR="$(pwd)/out"
           make -C "$(pwd)" O="$OUT_DIR" touchdirt-a04_defconfig
 
-          if [ -f "arch/arm64/configs/touchdirt-permissive.config" ]; then
-            ./scripts/kconfig/merge_config.sh -m -O "$OUT_DIR" "$OUT_DIR/.config" arch/arm64/configs/touchdirt-permissive.config
+          if [ -f "arch/arm64/configs/touchdirt-permissive-config" ]; then
+            ./scripts/kconfig/merge_config.sh -m -O "$OUT_DIR" "$OUT_DIR/.config" arch/arm64/configs/touchdirt-permissive-config
           fi
 
-          # --- إعداد خيار LTO ---
+          if [ "$ENABLE_OC" = "true" ]; then
+            echo "[-] Applying Overclock config..."
+            if [ -f "arch/arm64/configs/touchdirt-oc.config" ]; then
+              ./scripts/kconfig/merge_config.sh -m -O "$OUT_DIR" "$OUT_DIR/.config" arch/arm64/configs/touchdirt-oc.config
+            fi
+            OC_TAG="-OC"
+          else
+            echo "[-] Stock Clocks (OC Disabled)..."
+            OC_TAG=""
+          fi
+
           if [ "$ENABLE_LTO" = "true" ]; then
             echo "[-] Enabling ThinLTO..."
             ./scripts/config --file "$OUT_DIR/.config" \
@@ -150,24 +185,6 @@ jobs:
               -d LTO_CLANG_THIN \
               -d LTO_CLANG_FULL
             LTO_TAG=""
-          fi
-
-          # --- إعداد خيار Overclock (CPU 2500 / 2000 MHz & GPU 900 MHz) ---
-          if [ "$ENABLE_OC" = "true" ]; then
-            echo "[-] Enabling Overclock (CPU 2500/2000 MHz, GPU 900 MHz)..."
-            if [ -f "arch/arm64/configs/touchdirt-oc.config" ]; then
-              ./scripts/kconfig/merge_config.sh -m -O "$OUT_DIR" "$OUT_DIR/.config" arch/arm64/configs/touchdirt-oc.config
-            fi
-            ./scripts/config --file "$OUT_DIR/.config" \
-              -e TOUCHDIRT_OVERCLOCK \
-              --set-val CPU_BIG_MAX_FREQ 2500000 \
-              --set-val CPU_LITTLE_MAX_FREQ 2000000 \
-              --set-val GPU_MAX_FREQ 900000
-            OC_TAG="-OC"
-          else
-            echo "[-] Stock Clocks (OC Disabled)..."
-            ./scripts/config --file "$OUT_DIR/.config" -d TOUCHDIRT_OVERCLOCK
-            OC_TAG=""
           fi
 
           ./scripts/config --file "$OUT_DIR/.config" -d IKHEADERS
