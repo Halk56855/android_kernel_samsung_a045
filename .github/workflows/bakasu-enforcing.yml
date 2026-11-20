@@ -1,4 +1,6 @@
+
 name: Build TouchDirt Kernel, BakaSU, Enforcing
+
 on:
   workflow_call:
     inputs:
@@ -6,6 +8,9 @@ on:
         required: true
         type: string
       bakasu_sha:
+        required: true
+        type: string
+      nomount_sha:
         required: true
         type: string
 
@@ -30,6 +35,7 @@ jobs:
         echo "[-] Setup BakaSU..."
         chmod +x ./KernelSU/kernel/setup.sh
         ./KernelSU/kernel/setup.sh
+
         rm -rf KernelSU
         git clone https://github.com/Baka-SU/BakaSU.git KernelSU
         git -C KernelSU checkout "$BAKASU_SHA"
@@ -39,6 +45,19 @@ jobs:
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
+
+    - name: Integrating pinned NoMount revision
+      env:
+        NOMOUNT_SHA: ${{ inputs.nomount_sha }}
+      run: |
+        echo "[-] Cloning NoMount at $NOMOUNT_SHA..."
+
+        git clone https://github.com/maxsteeel/nomount.git NoMount
+        git -C NoMount checkout "$NOMOUNT_SHA"
+
+        echo "[-] Setup NoMount..."
+        chmod +x ./NoMount/kernel/setup.sh
+        bash ./NoMount/kernel/setup.sh
 
     - name: Install build dependencies
       run: |
@@ -138,3 +157,4 @@ jobs:
       with:
         name: TouchDirt-BakaSU-Enforcing
         path: TouchDirt-*.zip
+

@@ -1,3 +1,4 @@
+
 name: TouchDirt - Build BakaSU
 
 on:
@@ -13,6 +14,12 @@ on:
         required: false
         type: string
         default: ""
+      nomount_sha:
+        description: "Exact NoMount commit to integrate (leave empty for latest master)"
+        required: false
+        type: string
+        default: ""
+
   workflow_call:
     inputs:
       version:
@@ -21,61 +28,84 @@ on:
       bakasu_sha:
         required: true
         type: string
+      nomount_sha:
+        required: true
+        type: string
 
 permissions:
   contents: write
   actions: read
 
 jobs:
-  resolve-bakasu:
-    name: Resolve BakaSU revision
+  resolve-upstreams:
+    name: Resolve upstream revisions
     runs-on: ubuntu-latest
     outputs:
-      sha: ${{ steps.resolve.outputs.sha }}
+      bakasu_sha: ${{ steps.resolve.outputs.bakasu_sha }}
+      nomount_sha: ${{ steps.resolve.outputs.nomount_sha }}
+
     steps:
-      - name: Resolve exact BakaSU commit
+      - name: Resolve exact upstream commits
         id: resolve
         env:
-          REQUESTED_SHA: ${{ inputs.bakasu_sha }}
+          REQUESTED_BAKASU: ${{ inputs.bakasu_sha }}
+          REQUESTED_NOMOUNT: ${{ inputs.nomount_sha }}
         run: |
-          SHA="$REQUESTED_SHA"
-          if [ -z "$SHA" ]; then
-            SHA=$(git ls-remote https://github.com/Baka-SU/BakaSU.git refs/heads/main | awk '{print $1}')
+          BAKASU="$REQUESTED_BAKASU"
+          NOMOUNT="$REQUESTED_NOMOUNT"
+
+          if [ -z "$BAKASU" ]; then
+            BAKASU=$(git ls-remote https://github.com/Baka-SU/BakaSU.git refs/heads/main | awk '{print $1}')
           fi
 
-          if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "ERROR: Could not resolve a valid BakaSU commit SHA: $SHA"
+          if [ -z "$NOMOUNT" ]; then
+            NOMOUNT=$(git ls-remote https://github.com/maxsteeel/nomount.git refs/heads/master | awk '{print $1}')
+          fi
+
+          if ! [[ "$BAKASU" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: Invalid BakaSU SHA: $BAKASU"
             exit 1
           fi
 
-          echo "Building BakaSU commit: $SHA"
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          if ! [[ "$NOMOUNT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: Invalid NoMount SHA: $NOMOUNT"
+            exit 1
+          fi
+
+          echo "BakaSU: $BAKASU"
+          echo "NoMount: $NOMOUNT"
+
+          echo "bakasu_sha=$BAKASU" >> "$GITHUB_OUTPUT"
+          echo "nomount_sha=$NOMOUNT" >> "$GITHUB_OUTPUT"
 
   bakasu-enforcing:
     name: BakaSU - Enforcing
-    needs: resolve-bakasu
+    needs: resolve-upstreams
     uses: ./.github/workflows/bakasu-enforcing.yml
     with:
       version: ${{ inputs.version }}
-      bakasu_sha: ${{ needs.resolve-bakasu.outputs.sha }}
+      bakasu_sha: ${{ needs.resolve-upstreams.outputs.bakasu_sha }}
+      nomount_sha: ${{ needs.resolve-upstreams.outputs.nomount_sha }}
 
   bakasu-permissive:
     name: BakaSU - Permissive
-    needs: resolve-bakasu
+    needs: resolve-upstreams
     uses: ./.github/workflows/bakasu-permissive.yml
     with:
       version: ${{ inputs.version }}
-      bakasu_sha: ${{ needs.resolve-bakasu.outputs.sha }}
+      bakasu_sha: ${{ needs.resolve-upstreams.outputs.bakasu_sha }}
+      nomount_sha: ${{ needs.resolve-upstreams.outputs.nomount_sha }}
 
   release:
     name: Publish Release Assets
     needs:
-      - resolve-bakasu
+      - resolve-upstreams
       - bakasu-enforcing
       - bakasu-permissive
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - name: Checkout release notes
         uses: actions/checkout@v7.0.1
@@ -87,28 +117,37 @@ jobs:
         with:
           path: release-assets
 
-      - name: List release assets
-        run: find release-assets -type f -print
-
-      - name: Resolve release metadata
-        id: metadata
+      - name: Validate and prepare release metadata
         env:
-          REQUESTED_VERSION: ${{ inputs.version }}
-          BAKASU_SHA: ${{ needs.resolve-bakasu.outputs.sha }}
+          VERSION: ${{ inputs.version }}
+          BAKASU_SHA: ${{ needs.resolve-upstreams.outputs.bakasu_sha }}
+          NOMOUNT_SHA: ${{ needs.resolve-upstreams.outputs.nomount_sha }}
         run: |
-          VERSION="$REQUESTED_VERSION"
           if [ -z "$VERSION" ]; then
             echo "ERROR: Release version is empty."
             exit 1
           fi
 
+          shopt -s nullglob
+          ZIPS=(release-assets/*/*.zip)
+
+          if [ "${#ZIPS[@]}" -ne 2 ]; then
+            echo "ERROR: Expected exactly two kernel ZIPs, found ${#ZIPS[@]}."
+            printf '%s\n' "${ZIPS[@]}"
+            exit 1
+          fi
+
           printf '%s\n' "$BAKASU_SHA" > release-assets/bakasu-commit.txt
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$NOMOUNT_SHA" > release-assets/nomount-commit.txt
+
+          echo "Prepared release for $VERSION"
+          echo "BakaSU: $BAKASU_SHA"
+          echo "NoMount: $NOMOUNT_SHA"
 
       - name: Update the fixed release without moving its tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.metadata.outputs.version }}
+          VERSION: ${{ inputs.version }}
         run: |
           if ! gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$VERSION" \
@@ -118,34 +157,37 @@ jobs:
               --notes-file ".github/release-notes/$VERSION.md"
           fi
 
-          # Replace only the dated kernel ZIPs and BakaSU revision marker.
-          # Keep BakaSU-Manager.apk and any unrelated release assets intact.
           ASSETS=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" --jq '.assets[].name')
+
           while IFS= read -r ASSET; do
             [ -z "$ASSET" ] && continue
+
             case "$ASSET" in
-              TouchDirt-BakaSU-*.zip|bakasu-commit.txt)
-                gh release delete-asset "$VERSION" "$ASSET" --repo "$GITHUB_REPOSITORY" --yes
+              TouchDirt-BakaSU-*.zip|bakasu-commit.txt|nomount-commit.txt)
+                gh release delete-asset "$VERSION" "$ASSET" \
+                  --repo "$GITHUB_REPOSITORY" --yes
                 ;;
             esac
           done <<< "$ASSETS"
 
           shopt -s nullglob
           ZIPS=(release-assets/*/*.zip)
-          if [ "${#ZIPS[@]}" -ne 2 ]; then
-            echo "ERROR: Expected exactly two kernel ZIPs, found ${#ZIPS[@]}."
-            printf '%s\n' "${ZIPS[@]}"
-            exit 1
-          fi
 
-          gh release upload "$VERSION" "${ZIPS[@]}" release-assets/bakasu-commit.txt \
+          gh release upload "$VERSION" "${ZIPS[@]}" \
+            --repo "$GITHUB_REPOSITORY"
+
+          # Upload revision markers last.
+          gh release upload "$VERSION" \
+            release-assets/bakasu-commit.txt \
+            release-assets/nomount-commit.txt \
             --repo "$GITHUB_REPOSITORY"
 
   bakasu-manager:
     name: BakaSU Manager
     needs:
       - release
-      - resolve-bakasu
+      - resolve-upstreams
     uses: ./.github/workflows/update-bakasu-manager.yml
     with:
-      bakasu_sha: ${{ needs.resolve-bakasu.outputs.sha }}
+      bakasu_sha: ${{ needs.resolve-upstreams.outputs.bakasu_sha }}
+

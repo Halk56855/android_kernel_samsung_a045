@@ -8,6 +8,9 @@ on:
       bakasu_sha:
         required: true
         type: string
+      nomount_sha:
+        required: true
+        type: string
 
 jobs:
   build:
@@ -39,6 +42,19 @@ jobs:
         git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
         chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
         ./SUSFS/Patches/susfs_inline_hook_patches.sh
+
+    - name: Integrating pinned NoMount revision
+      env:
+        NOMOUNT_SHA: ${{ inputs.nomount_sha }}
+      run: |
+        echo "[-] Cloning NoMount at $NOMOUNT_SHA..."
+
+        git clone https://github.com/maxsteeel/nomount.git NoMount
+        git -C NoMount checkout "$NOMOUNT_SHA"
+
+        echo "[-] Setup NoMount..."
+        chmod +x ./NoMount/kernel/setup.sh
+        bash ./NoMount/kernel/setup.sh
 
     - name: Install build dependencies
       run: |

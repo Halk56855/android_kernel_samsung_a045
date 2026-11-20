@@ -1,3 +1,4 @@
+
 name: TouchDirt - Constant BakaSU Builds
 
 on:
@@ -16,14 +17,16 @@ concurrency:
 
 jobs:
   check-upstream:
-    name: Check for a new BakaSU revision
+    name: Check for upstream changes
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.compare.outputs.changed }}
       sha: ${{ steps.compare.outputs.sha }}
+      nomount_sha: ${{ steps.compare.outputs.nomount_sha }}
+
     steps:
       - name: Get latest BakaSU main commit
-        id: upstream
+        id: bakasu
         run: |
           SHA=$(git ls-remote https://github.com/Baka-SU/BakaSU.git refs/heads/main | awk '{print $1}')
 
@@ -32,39 +35,67 @@ jobs:
             exit 1
           fi
 
-          echo "Latest BakaSU main: $SHA"
+          echo "Latest BakaSU: $SHA"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Compare with the last published BakaSU revision
+      - name: Get latest NoMount master commit
+        id: nomount
+        run: |
+          SHA=$(git ls-remote https://github.com/maxsteeel/nomount.git refs/heads/master | awk '{print $1}')
+
+          if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: Could not resolve NoMount master."
+            exit 1
+          fi
+
+          echo "Latest NoMount: $SHA"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Compare with last published revisions
         id: compare
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          LATEST_SHA: ${{ steps.upstream.outputs.sha }}
+          LATEST_SHA: ${{ steps.bakasu.outputs.sha }}
+          LATEST_NOMOUNT_SHA: ${{ steps.nomount.outputs.sha }}
         run: |
           mkdir -p previous
+
+          LAST_SHA=""
+          LAST_NOMOUNT_SHA=""
 
           if gh release download v1.0.3 \
             --repo "$GITHUB_REPOSITORY" \
             --pattern bakasu-commit.txt \
             --dir previous; then
             LAST_SHA=$(tr -d '[:space:]' < previous/bakasu-commit.txt)
-          else
-            echo "No previous BakaSU revision marker found. A first build is required."
-            LAST_SHA=""
           fi
 
-          echo "Previously published: ${LAST_SHA:-none}"
-          echo "Currently upstream:  $LATEST_SHA"
+          if gh release download v1.0.3 \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern nomount-commit.txt \
+            --dir previous; then
+            LAST_NOMOUNT_SHA=$(tr -d '[:space:]' < previous/nomount-commit.txt)
+          fi
 
-          if [ "$LATEST_SHA" = "$LAST_SHA" ]; then
-            echo "BakaSU has not changed. Skipping both kernel builds."
+          echo "BakaSU:"
+          echo "  Previous: ${LAST_SHA:-none}"
+          echo "  Current:  $LATEST_SHA"
+
+          echo "NoMount:"
+          echo "  Previous: ${LAST_NOMOUNT_SHA:-none}"
+          echo "  Current:  $LATEST_NOMOUNT_SHA"
+
+          if [ "$LATEST_SHA" = "$LAST_SHA" ] && \
+             [ "$LATEST_NOMOUNT_SHA" = "$LAST_NOMOUNT_SHA" ]; then
+            echo "Neither upstream has changed."
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
-            echo "BakaSU changed. A new pair of kernel builds is required."
+            echo "An upstream dependency has changed."
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
           echo "sha=$LATEST_SHA" >> "$GITHUB_OUTPUT"
+          echo "nomount_sha=$LATEST_NOMOUNT_SHA" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build both variants
@@ -74,3 +105,5 @@ jobs:
     with:
       version: v1.0.3
       bakasu_sha: ${{ needs.check-upstream.outputs.sha }}
+      nomount_sha: ${{ needs.check-upstream.outputs.nomount_sha }}
+
