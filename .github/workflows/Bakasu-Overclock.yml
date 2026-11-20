@@ -1,0 +1,222 @@
+name: Build TouchDirt Kernel, BakaSU, Permissive
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      bakasu_sha:
+        required: true
+        type: string
+      nomount_sha:
+        required: true
+        type: string
+      enable_lto:
+        required: false
+        type: boolean
+        default: true
+      enable_oc:
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout frozen kernel source
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: v1.0.3
+
+      - name: Integrating pinned BakaSU revision
+        env:
+          BAKASU_SHA: ${{ inputs.bakasu_sha }}
+        run: |
+          echo "[-] Cloning BakaSU repo at $BAKASU_SHA..."
+          rm -rf KernelSU
+          mkdir -p KernelSU
+          git -C KernelSU init -q
+          git -C KernelSU remote add origin https://github.com/Baka-SU/BakaSU.git
+          git -C KernelSU fetch --depth 1 origin "$BAKASU_SHA"
+          git -C KernelSU checkout -q FETCH_HEAD
+
+          echo "[-] Setup BakaSU..."
+          chmod +x ./KernelSU/kernel/setup.sh
+          ./KernelSU/kernel/setup.sh
+
+      - name: SUSFS
+        run: |
+          git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
+          chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
+          ./SUSFS/Patches/susfs_inline_hook_patches.sh
+
+      - name: Integrating pinned NoMount revision
+        env:
+          NOMOUNT_SHA: ${{ inputs.nomount_sha }}
+        run: |
+          echo "[-] Cloning NoMount at $NOMOUNT_SHA..."
+          rm -rf NoMount
+          mkdir -p NoMount
+          git -C NoMount init -q
+          git -C NoMount remote add origin https://github.com/maxsteeel/nomount.git
+          git -C NoMount fetch --depth 1 origin "$NOMOUNT_SHA"
+          git -C NoMount checkout -q FETCH_HEAD
+
+          echo "[-] Setup NoMount..."
+          chmod +x ./NoMount/kernel/setup.sh
+          bash ./NoMount/kernel/setup.sh
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison flex libssl-dev gcc g++ clang python3 \
+            libncurses5-dev ccache make git zip wget xz-utils \
+            device-tree-compiler libfdt-dev gcc-arm-linux-gnueabi cpio
+
+      - name: Prepare Toolchains directories
+        run: |
+          mkdir -p toolchain/gcc toolchain/clang
+
+      - name: Download GCC & Clang Toolchain
+        run: |
+          cd toolchain/gcc
+          wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
+            https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz || \
+          wget -q --show-progress \
+            https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
+          tar -xf gcc.tar.xz -C ./
+
+          cd ../clang
+          wget -q --show-progress \
+            https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/clang-r383902.tar.gz -O clang.tar.gz
+          mkdir -p host/linux-x86/clang-r383902
+          tar -xzf clang.tar.gz -C host/linux-x86/clang-r383902
+
+      - name: Set Environment Variables
+        run: |
+          ROOT_DIR="$(pwd)"
+          CLANG_PATH="$ROOT_DIR/toolchain/clang/host/linux-x86/clang-r383902/bin"
+          GCC_PATH="$ROOT_DIR/toolchain/gcc/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu/bin"
+
+          echo "$CLANG_PATH" >> "$GITHUB_PATH"
+
+          {
+            echo "CROSS_COMPILE=$GCC_PATH/aarch64-none-linux-gnu-"
+            echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
+            echo "CC=clang"
+            echo "LD=ld.lld"
+            echo "AR=llvm-ar"
+            echo "NM=llvm-nm"
+            echo "OBJCOPY=llvm-objcopy"
+            echo "OBJDUMP=llvm-objdump"
+            echo "STRIP=llvm-strip"
+            echo "CLANG_TRIPLE=aarch64-linux-gnu-"
+            echo "ARCH=arm64"
+            echo "KCFLAGS=-w -I$ROOT_DIR/security/selinux/include -I$ROOT_DIR/security/selinux/ss"
+            echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure and Compile Kernel
+        env:
+          ENABLE_LTO: ${{ inputs.enable_lto }}
+          ENABLE_OC: ${{ inputs.enable_oc }}
+        run: |
+          OUT_DIR="$(pwd)/out"
+          make -C "$(pwd)" O="$OUT_DIR" touchdirt-a04_defconfig
+
+          if [ -f "arch/arm64/configs/touchdirt-permissive.config" ]; then
+            ./scripts/kconfig/merge_config.sh -m -O "$OUT_DIR" "$OUT_DIR/.config" arch/arm64/configs/touchdirt-permissive.config
+          fi
+
+          # --- إعداد خيار LTO ---
+          if [ "$ENABLE_LTO" = "true" ]; then
+            echo "[-] Enabling ThinLTO..."
+            ./scripts/config --file "$OUT_DIR/.config" \
+              -d LTO_NONE \
+              -e LTO \
+              -e LTO_CLANG \
+              -e LTO_CLANG_THIN
+            LTO_TAG="-LTO"
+          else
+            echo "[-] Disabling LTO..."
+            ./scripts/config --file "$OUT_DIR/.config" \
+              -e LTO_NONE \
+              -d LTO \
+              -d LTO_CLANG \
+              -d LTO_CLANG_THIN \
+              -d LTO_CLANG_FULL
+            LTO_TAG=""
+          fi
+
+          # --- إعداد خيار Overclock (CPU 2500 / 2000 MHz & GPU 900 MHz) ---
+          if [ "$ENABLE_OC" = "true" ]; then
+            echo "[-] Enabling Overclock (CPU 2500/2000 MHz, GPU 900 MHz)..."
+            if [ -f "arch/arm64/configs/touchdirt-oc.config" ]; then
+              ./scripts/kconfig/merge_config.sh -m -O "$OUT_DIR" "$OUT_DIR/.config" arch/arm64/configs/touchdirt-oc.config
+            fi
+            ./scripts/config --file "$OUT_DIR/.config" \
+              -e TOUCHDIRT_OVERCLOCK \
+              --set-val CPU_BIG_MAX_FREQ 2500000 \
+              --set-val CPU_LITTLE_MAX_FREQ 2000000 \
+              --set-val GPU_MAX_FREQ 900000
+            OC_TAG="-OC"
+          else
+            echo "[-] Stock Clocks (OC Disabled)..."
+            ./scripts/config --file "$OUT_DIR/.config" -d TOUCHDIRT_OVERCLOCK
+            OC_TAG=""
+          fi
+
+          ./scripts/config --file "$OUT_DIR/.config" -d IKHEADERS
+
+          if [ "${{ github.event_name }}" = "workflow_call" ]; then
+            LOCALVER="-TouchDirt-BakaSU-PERMISSIVE${LTO_TAG}${OC_TAG}-${{ inputs.version }}"
+          else
+            LOCALVER="-TouchDirt-BakaSU-PERMISSIVE${LTO_TAG}${OC_TAG}-BETA"
+          fi
+
+          ./scripts/config --file "$OUT_DIR/.config" --set-str LOCALVERSION "$LOCALVER"
+          make -C "$(pwd)" O="$OUT_DIR" olddefconfig
+          grep '^CONFIG_LOCALVERSION=' "$OUT_DIR/.config"
+
+          make -C "$(pwd)" O="$OUT_DIR" prepare
+          make -C "$(pwd)" O="$OUT_DIR" scripts
+          make -C "$(pwd)" O="$OUT_DIR" security/
+
+          make -C "$(pwd)" O="$OUT_DIR" -j"$(nproc)" || make -C "$(pwd)" O="$OUT_DIR" -j1
+
+      - name: Get kernel version
+        id: version
+        run: |
+          VERSION="${{ inputs.version }}"
+          echo "VERSION=$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Package AnyKernel3
+        env:
+          ENABLE_LTO: ${{ inputs.enable_lto }}
+          ENABLE_OC: ${{ inputs.enable_oc }}
+        run: |
+          DATE=$(date -u +"%Y-%m-%d")
+          SUFFIX=""
+          [ "$ENABLE_LTO" = "true" ] && SUFFIX="${SUFFIX}-LTO"
+          [ "$ENABLE_OC" = "true" ] && SUFFIX="${SUFFIX}-OC"
+
+          ZIP_NAME="TouchDirt-BakaSU-${{ steps.version.outputs.version }}-${DATE}-Permissive${SUFFIX}.zip"
+
+          git clone https://github.com/DaniTheSillyFem/AnyKernel3 --depth 1
+          cp out/arch/arm64/boot/Image AnyKernel3/Image
+
+          (
+            cd AnyKernel3
+            zip -r9 "../$ZIP_NAME" . -x ".git/*"
+          )
+
+      - name: Upload AnyKernel3 ZIP
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: TouchDirt-BakaSU-Permissive
+          path: TouchDirt-*.zip
