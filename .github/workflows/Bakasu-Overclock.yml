@@ -1,4 +1,4 @@
-name: Build TouchDirt Kernel, BakaSU, Permissive
+name: Build ArcKern+ Kernel (1.0v)
 
 on:
   workflow_dispatch:
@@ -33,7 +33,7 @@ on:
       version:
         required: false
         type: string
-        default: "v1.0.3"
+        default: "1.0v"
       bakasu_sha:
         required: false
         type: string
@@ -249,8 +249,8 @@ jobs:
 
           ./scripts/config --file "$OUT_DIR/.config" -d IKHEADERS
 
-          VERSION_STR="${{ inputs.version || 'v1.0.3' }}"
-          LOCALVER="-TouchDirt-BakaSU-PERMISSIVE${LTO_TAG}${OC_TAG}-${VERSION_STR}"
+          VERSION_STR="${{ inputs.version || '1.0v' }}"
+          LOCALVER="-ArcKern+-${VERSION_STR}-BakaSU-PERMISSIVE${LTO_TAG}${OC_TAG}"
 
           ./scripts/config --file "$OUT_DIR/.config" --set-str LOCALVERSION "$LOCALVER"
           make -C "$(pwd)" O="$OUT_DIR" olddefconfig
@@ -265,7 +265,7 @@ jobs:
       - name: Get kernel version
         id: version
         run: |
-          VERSION="${{ inputs.version || 'v1.0.3' }}"
+          VERSION="${{ inputs.version || '1.0v' }}"
           echo "VERSION=$VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -286,9 +286,9 @@ jobs:
             fi
           fi
 
-          ZIP_NAME="TouchDirt-BakaSU-${{ steps.version.outputs.version }}-${DATE}-Permissive${SUFFIX}.zip"
+          ZIP_NAME="ArcKern+-${{ steps.version.outputs.version }}-${DATE}-BakaSU-Permissive${SUFFIX}.zip"
 
-          git clone https://github.com/DaniTheSillyFem/AnyKernel3 --depth 1
+          git clone https://github.com/Halk56855/AnyKernel3-a04.git --depth 1 AnyKernel3
           cp out/arch/arm64/boot/Image AnyKernel3/Image
 
           if [ "$ENABLE_OC" = "true" ] && [ "$LOCK_MAX_FREQ" = "true" ]; then
@@ -309,5 +309,5 @@ jobs:
       - name: Upload AnyKernel3 ZIP
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: TouchDirt-BakaSU-Permissive
-          path: TouchDirt-*.zip
+          name: ArcKern+-1.0v-BakaSU-Permissive
+          path: ArcKern+-*.zip
