@@ -1,14 +1,13 @@
-
-name: TouchDirt - Build BakaSU
+name: ArcKern+ - Build BakaSU (1.0v)
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "TouchDirt version"
+        description: "ArcKern+ version"
         required: true
         type: string
-        default: "v1.0.3"
+        default: "1.0v"
       bakasu_sha:
         description: "Exact BakaSU commit to build (leave empty for latest main)"
         required: false
@@ -19,18 +18,66 @@ on:
         required: false
         type: string
         default: ""
+      enable_lto:
+        description: "Enable ThinLTO (Better Performance & Efficiency)"
+        required: false
+        type: boolean
+        default: true
+      enable_oc:
+        description: "Enable Balanced Overclock (CPU 2500/2000 MHz, GPU 900 MHz - Cool & Smooth)"
+        required: false
+        type: boolean
+        default: true
+      lock_max_freq:
+        description: "Force Lock Max CPU/GPU Frequency (Higher Heat)"
+        required: false
+        type: boolean
+        default: false
+      use_ccache:
+        description: "Enable ccache to Speed Up Rebuilds"
+        required: false
+        type: boolean
+        default: true
+      clean_build:
+        description: "Clean 'out' Directory Before Building"
+        required: false
+        type: boolean
+        default: false
 
   workflow_call:
     inputs:
       version:
-        required: true
+        required: false
         type: string
+        default: "1.0v"
       bakasu_sha:
-        required: true
+        required: false
         type: string
+        default: ""
       nomount_sha:
-        required: true
+        required: false
         type: string
+        default: ""
+      enable_lto:
+        required: false
+        type: boolean
+        default: true
+      enable_oc:
+        required: false
+        type: boolean
+        default: true
+      lock_max_freq:
+        required: false
+        type: boolean
+        default: false
+      use_ccache:
+        required: false
+        type: boolean
+        default: true
+      clean_build:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -79,22 +126,32 @@ jobs:
           echo "nomount_sha=$NOMOUNT" >> "$GITHUB_OUTPUT"
 
   bakasu-enforcing:
-    name: BakaSU - Enforcing
+    name: ArcKern+ BakaSU - Enforcing
     needs: resolve-upstreams
     uses: ./.github/workflows/bakasu-enforcing.yml
     with:
       version: ${{ inputs.version }}
       bakasu_sha: ${{ needs.resolve-upstreams.outputs.bakasu_sha }}
       nomount_sha: ${{ needs.resolve-upstreams.outputs.nomount_sha }}
+      enable_lto: ${{ inputs.enable_lto }}
+      enable_oc: ${{ inputs.enable_oc }}
+      lock_max_freq: ${{ inputs.lock_max_freq }}
+      use_ccache: ${{ inputs.use_ccache }}
+      clean_build: ${{ inputs.clean_build }}
 
   bakasu-permissive:
-    name: BakaSU - Permissive
+    name: ArcKern+ BakaSU - Permissive
     needs: resolve-upstreams
     uses: ./.github/workflows/bakasu-permissive.yml
     with:
       version: ${{ inputs.version }}
       bakasu_sha: ${{ needs.resolve-upstreams.outputs.bakasu_sha }}
       nomount_sha: ${{ needs.resolve-upstreams.outputs.nomount_sha }}
+      enable_lto: ${{ inputs.enable_lto }}
+      enable_oc: ${{ inputs.enable_oc }}
+      lock_max_freq: ${{ inputs.lock_max_freq }}
+      use_ccache: ${{ inputs.use_ccache }}
+      clean_build: ${{ inputs.clean_build }}
 
   release:
     name: Publish Release Assets
@@ -110,7 +167,7 @@ jobs:
       - name: Checkout release notes
         uses: actions/checkout@v7.0.1
         with:
-          ref: v1.0.3
+          ref: main
 
       - name: Download build artifacts
         uses: actions/download-artifact@v8.0.1
@@ -150,11 +207,19 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           if ! gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$VERSION" \
-              --repo "$GITHUB_REPOSITORY" \
-              --target v1.0.3 \
-              --title "TouchDirt $VERSION" \
-              --notes-file ".github/release-notes/$VERSION.md"
+            if [ -f ".github/release-notes/$VERSION.md" ]; then
+              gh release create "$VERSION" \
+                --repo "$GITHUB_REPOSITORY" \
+                --target main \
+                --title "ArcKern+ $VERSION" \
+                --notes-file ".github/release-notes/$VERSION.md"
+            else
+              gh release create "$VERSION" \
+                --repo "$GITHUB_REPOSITORY" \
+                --target main \
+                --title "ArcKern+ $VERSION" \
+                --notes "ArcKern+ $VERSION build"
+            fi
           fi
 
           ASSETS=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" --jq '.assets[].name')
@@ -163,7 +228,7 @@ jobs:
             [ -z "$ASSET" ] && continue
 
             case "$ASSET" in
-              TouchDirt-BakaSU-*.zip|bakasu-commit.txt|nomount-commit.txt)
+              ArcKern+-*.zip|TouchDirt-BakaSU-*.zip|bakasu-commit.txt|nomount-commit.txt)
                 gh release delete-asset "$VERSION" "$ASSET" \
                   --repo "$GITHUB_REPOSITORY" --yes
                 ;;
@@ -190,4 +255,3 @@ jobs:
     uses: ./.github/workflows/update-bakasu-manager.yml
     with:
       bakasu_sha: ${{ needs.resolve-upstreams.outputs.bakasu_sha }}
-
