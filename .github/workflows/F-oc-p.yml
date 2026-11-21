@@ -275,7 +275,16 @@ jobs:
           make -C "$(pwd)" O="$OUT_DIR" headers_install
           make -C "$(pwd)" O="$OUT_DIR" security/
 
-          make -C "$(pwd)" O="$OUT_DIR" -j"$(nproc)" KSU_REQUIRE_PREINIT=1 || make -C "$(pwd)" O="$OUT_DIR" -j1 KSU_REQUIRE_PREINIT=1
+          cat << 'EOF' > "$OUT_DIR/compat_module_ns.h"
+          #ifndef MODULE_IMPORT_NS
+          #define MODULE_IMPORT_NS(ns)
+          #endif
+          EOF
+
+          COMPAT_KCFLAGS="$KCFLAGS -include $OUT_DIR/compat_module_ns.h"
+
+          make -C "$(pwd)" O="$OUT_DIR" -j"$(nproc)" KCFLAGS="$COMPAT_KCFLAGS" KSU_REQUIRE_PREINIT=1 || \
+          make -C "$(pwd)" O="$OUT_DIR" -j1 KCFLAGS="$COMPAT_KCFLAGS" KSU_REQUIRE_PREINIT=1
 
       - name: Get kernel version
         id: version
