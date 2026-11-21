@@ -167,7 +167,7 @@ jobs:
             echo "STRIP=llvm-strip"
             echo "CLANG_TRIPLE=aarch64-linux-gnu-"
             echo "ARCH=arm64"
-            echo "KCFLAGS=-w -I$ROOT_DIR/security/selinux/include -I$ROOT_DIR/security/selinux/ss"
+            echo "KCFLAGS=-w -Dstatic_assert=_Static_assert -I$ROOT_DIR/security/selinux/include -I$ROOT_DIR/security/selinux/ss"
             echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y"
           } >> "$GITHUB_ENV"
 
@@ -281,7 +281,7 @@ jobs:
           #endif
           EOF
 
-          COMPAT_KCFLAGS="$KCFLAGS -include $OUT_DIR/compat_module_ns.h"
+          COMPAT_KCFLAGS="$KCFLAGS -Dstatic_assert=_Static_assert -include $OUT_DIR/compat_module_ns.h"
 
           make -C "$(pwd)" O="$OUT_DIR" -j"$(nproc)" KCFLAGS="$COMPAT_KCFLAGS" KSU_REQUIRE_PREINIT=1 || \
           make -C "$(pwd)" O="$OUT_DIR" -j1 KCFLAGS="$COMPAT_KCFLAGS" KSU_REQUIRE_PREINIT=1
