@@ -1,4 +1,4 @@
-name: ArcKern+ - Build BakaSU (1.0v)
+name: ArcKern+ - Build BakaSU (v1.0)
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ on:
         description: "ArcKern+ version"
         required: true
         type: string
-        default: "1.0v"
+        default: "v1.0"
       bakasu_sha:
         description: "Exact BakaSU commit to build (leave empty for latest main)"
         required: false
@@ -49,7 +49,7 @@ on:
       version:
         required: false
         type: string
-        default: "1.0v"
+        default: "v1.0"
       bakasu_sha:
         required: false
         type: string
@@ -153,12 +153,38 @@ jobs:
       use_ccache: ${{ inputs.use_ccache }}
       clean_build: ${{ inputs.clean_build }}
 
+  vanilla-enforcing:
+    name: ArcKern+ Vanilla - Enforcing
+    needs: resolve-upstreams
+    uses: ./.github/workflows/vanilla-enforcing.yml
+    with:
+      version: ${{ inputs.version }}
+      enable_lto: ${{ inputs.enable_lto }}
+      enable_oc: ${{ inputs.enable_oc }}
+      lock_max_freq: ${{ inputs.lock_max_freq }}
+      use_ccache: ${{ inputs.use_ccache }}
+      clean_build: ${{ inputs.clean_build }}
+
+  vanilla-permissive:
+    name: ArcKern+ Vanilla - Permissive
+    needs: resolve-upstreams
+    uses: ./.github/workflows/vanilla-permissive.yml
+    with:
+      version: ${{ inputs.version }}
+      enable_lto: ${{ inputs.enable_lto }}
+      enable_oc: ${{ inputs.enable_oc }}
+      lock_max_freq: ${{ inputs.lock_max_freq }}
+      use_ccache: ${{ inputs.use_ccache }}
+      clean_build: ${{ inputs.clean_build }}
+
   release:
     name: Publish Release Assets
     needs:
       - resolve-upstreams
       - bakasu-enforcing
       - bakasu-permissive
+      - vanilla-enforcing
+      - vanilla-permissive
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -188,8 +214,8 @@ jobs:
           shopt -s nullglob
           ZIPS=(release-assets/*/*.zip)
 
-          if [ "${#ZIPS[@]}" -ne 2 ]; then
-            echo "ERROR: Expected exactly two kernel ZIPs, found ${#ZIPS[@]}."
+          if [ "${#ZIPS[@]}" -lt 2 ]; then
+            echo "ERROR: Expected kernel ZIPs, found ${#ZIPS[@]}."
             printf '%s\n' "${ZIPS[@]}"
             exit 1
           fi
@@ -228,7 +254,7 @@ jobs:
             [ -z "$ASSET" ] && continue
 
             case "$ASSET" in
-              ArcKern+-*.zip|TouchDirt-BakaSU-*.zip|bakasu-commit.txt|nomount-commit.txt)
+              ArcKern+-*.zip|TouchDirt-*.zip|bakasu-commit.txt|nomount-commit.txt)
                 gh release delete-asset "$VERSION" "$ASSET" \
                   --repo "$GITHUB_REPOSITORY" --yes
                 ;;
