@@ -1,0 +1,323 @@
+name: Build ArcKern+ Kernel (1.0v)
+
+on:
+  workflow_dispatch:
+    inputs:
+      enable_lto:
+        description: "Enable ThinLTO (Better Performance & Efficiency)"
+        required: false
+        type: boolean
+        default: true
+      enable_oc:
+        description: "Enable Balanced Overclock (CPU 2500/2000 MHz, GPU 900 MHz - Cool & Smooth)"
+        required: false
+        type: boolean
+        default: true
+      lock_max_freq:
+        description: "Force Lock Max CPU/GPU Frequency (Higher Heat)"
+        required: false
+        type: boolean
+        default: false
+      use_ccache:
+        description: "Enable ccache to Speed Up Rebuilds"
+        required: false
+        type: boolean
+        default: true
+      clean_build:
+        description: "Clean 'out' Directory Before Building"
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      version:
+        required: false
+        type: string
+        default: "1.0v"
+      finasu_sha:
+        required: false
+        type: string
+        default: "main"
+      nomount_sha:
+        required: false
+        type: string
+        default: "master"
+      enable_lto:
+        required: false
+        type: boolean
+        default: true
+      enable_oc:
+        required: false
+        type: boolean
+        default: true
+      lock_max_freq:
+        required: false
+        type: boolean
+        default: false
+      use_ccache:
+        required: false
+        type: boolean
+        default: true
+      clean_build:
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+
+      - name: Integrating pinned FinaSU revision
+        env:
+          FINASU_SHA: ${{ inputs.finasu_sha || 'main' }}
+        run: |
+          ROOT_DIR="$(pwd)"
+          echo "[-] Cloning FinaSU repo at $FINASU_SHA..."
+          rm -rf "$ROOT_DIR/FinaSU"
+          mkdir -p "$ROOT_DIR/FinaSU"
+          git -C "$ROOT_DIR/FinaSU" init -q
+          git -C "$ROOT_DIR/FinaSU" remote add origin https://github.com/LyraVoid/FinaSU.git
+          git -C "$ROOT_DIR/FinaSU" fetch --depth 1 origin "$FINASU_SHA"
+          git -C "$ROOT_DIR/FinaSU" checkout -q FETCH_HEAD
+
+          echo "[-] Setup FinaSU (keeping .git intact)..."
+          chmod +x "$ROOT_DIR/FinaSU/kernel/setup.sh"
+          "$ROOT_DIR/FinaSU/kernel/setup.sh" --dir "$ROOT_DIR/FinaSU"
+
+      - name: SUSFS
+        run: |
+          git clone https://github.com/JackA1ltman/NonGKI_Kernel_Build_2nd --depth 1 SUSFS
+          chmod +x ./SUSFS/Patches/susfs_inline_hook_patches.sh
+          ./SUSFS/Patches/susfs_inline_hook_patches.sh
+
+      - name: Integrating pinned NoMount revision
+        env:
+          NOMOUNT_SHA: ${{ inputs.nomount_sha || 'master' }}
+        run: |
+          echo "[-] Cloning NoMount at $NOMOUNT_SHA..."
+          rm -rf NoMount
+          mkdir -p NoMount
+          git -C NoMount init -q
+          git -C NoMount remote add origin https://github.com/maxsteeel/nomount.git
+          git -C NoMount fetch --depth 1 origin "$NOMOUNT_SHA"
+          git -C NoMount checkout -q FETCH_HEAD
+
+          echo "[-] Setup NoMount..."
+          chmod +x ./NoMount/kernel/setup.sh
+          bash ./NoMount/kernel/setup.sh
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison flex libssl-dev gcc g++ clang python3 \
+            libncurses5-dev ccache make git zip wget xz-utils \
+            device-tree-compiler libfdt-dev gcc-arm-linux-gnueabi cpio
+
+      - name: Prepare Toolchains directories
+        run: |
+          mkdir -p toolchain/gcc toolchain/clang
+
+      - name: Download GCC & Clang Toolchain
+        run: |
+          cd toolchain/gcc
+          wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
+            https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz || \
+          wget -q --show-progress \
+            https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
+          tar -xf gcc.tar.xz -C ./
+
+          cd ../clang
+          wget -q --show-progress \
+            https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/clang-r383902.tar.gz -O clang.tar.gz
+          mkdir -p host/linux-x86/clang-r383902
+          tar -xzf clang.tar.gz -C host/linux-x86/clang-r383902
+
+      - name: Set Environment Variables
+        env:
+          USE_CCACHE: ${{ inputs.use_ccache }}
+        run: |
+          ROOT_DIR="$(pwd)"
+          CLANG_PATH="$ROOT_DIR/toolchain/clang/host/linux-x86/clang-r383902/bin"
+          GCC_PATH="$ROOT_DIR/toolchain/gcc/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu/bin"
+
+          if [ "$USE_CCACHE" = "true" ]; then
+            echo "/usr/lib/ccache:$CLANG_PATH" >> "$GITHUB_PATH"
+            echo "CC=ccache clang" >> "$GITHUB_ENV"
+            ccache -M 4G
+          else
+            echo "$CLANG_PATH" >> "$GITHUB_PATH"
+            echo "CC=clang" >> "$GITHUB_ENV"
+          fi
+
+          {
+            echo "CROSS_COMPILE=$GCC_PATH/aarch64-none-linux-gnu-"
+            echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
+            echo "LD=ld.lld"
+            echo "AR=llvm-ar"
+            echo "NM=llvm-nm"
+            echo "OBJCOPY=llvm-objcopy"
+            echo "OBJDUMP=llvm-objdump"
+            echo "STRIP=llvm-strip"
+            echo "CLANG_TRIPLE=aarch64-linux-gnu-"
+            echo "ARCH=arm64"
+            echo "KCFLAGS=-w -I$ROOT_DIR/security/selinux/include -I$ROOT_DIR/security/selinux/ss"
+            echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure and Compile Kernel
+        env:
+          ENABLE_LTO: ${{ inputs.enable_lto }}
+          ENABLE_OC: ${{ inputs.enable_oc }}
+          LOCK_MAX_FREQ: ${{ inputs.lock_max_freq }}
+          CLEAN_BUILD: ${{ inputs.clean_build }}
+        run: |
+          OUT_DIR="$(pwd)/out"
+          if [ "$CLEAN_BUILD" = "true" ]; then
+            echo "[-] Cleaning build directory..."
+            rm -rf "$OUT_DIR"
+          fi
+
+          make -C "$(pwd)" O="$OUT_DIR" touchdirt-a04_defconfig
+
+          if [ -f "arch/arm64/configs/touchdirt-permissive-config" ]; then
+            ./scripts/kconfig/merge_config.sh -m -O "$OUT_DIR" "$OUT_DIR/.config" arch/arm64/configs/touchdirt-permissive-config
+          fi
+
+          ./scripts/config --file "$OUT_DIR/.config" \
+            -e CC_OPTIMIZE_FOR_PERFORMANCE \
+            -d CC_OPTIMIZE_FOR_SIZE \
+            -e HZ_300 \
+            -d HZ_100 \
+            -d HZ_250 \
+            -d HZ_1000
+
+          ./scripts/config --file "$OUT_DIR/.config" \
+            -e KSU \
+            -e KPROBES \
+            -e KALLSYMS_ALL \
+            -e EXT4_FS \
+            -e HEADERS_INSTALL \
+            -e THREAD_INFO_IN_TASK \
+            -e KSU_SUSFS
+
+          if [ "$ENABLE_OC" = "true" ]; then
+            echo "[-] Applying Balanced Overclock (CPU 2500/2000 MHz, GPU 900 MHz)..."
+
+            if [ -f "arch/arm64/configs/touchdirt-oc.config" ]; then
+              ./scripts/kconfig/merge_config.sh -m -O "$OUT_DIR" "$OUT_DIR/.config" arch/arm64/configs/touchdirt-oc.config
+            fi
+
+            find arch/arm64/boot/dts drivers/misc/mediatek drivers/gpu -type f \( -name "*.dts*" -o -name "*.c" -o -name "*.h" \) -exec \
+              sed -i -E 's/230[01]000/2500000/g; s/1800000/2000000/g; s/680000/900000/g' {} +
+
+            if [ "$LOCK_MAX_FREQ" = "true" ]; then
+              echo "[-] Locking CPU to performance governor (Max Freq)..."
+              ./scripts/config --file "$OUT_DIR/.config" \
+                -e CPU_FREQ_GOV_PERFORMANCE \
+                -e CPU_FREQ_DEFAULT_GOV_PERFORMANCE \
+                -d CPU_FREQ_DEFAULT_GOV_SCHEDUTIL \
+                -d CPU_FREQ_DEFAULT_GOV_INTERACTIVE
+              OC_TAG="-OC-MAX"
+            else
+              echo "[-] Using Dynamic Governor (schedutil) for Low Heat..."
+              ./scripts/config --file "$OUT_DIR/.config" \
+                -e CPU_FREQ_GOV_SCHEDUTIL \
+                -e CPU_FREQ_DEFAULT_GOV_SCHEDUTIL \
+                -d CPU_FREQ_DEFAULT_GOV_PERFORMANCE
+              OC_TAG="-OC-COOL"
+            fi
+          else
+            echo "[-] Stock Clocks (OC Disabled)..."
+            OC_TAG=""
+          fi
+
+          if [ "$ENABLE_LTO" = "true" ]; then
+            echo "[-] Enabling ThinLTO..."
+            ./scripts/config --file "$OUT_DIR/.config" \
+              -d LTO_NONE \
+              -e LTO \
+              -e LTO_CLANG \
+              -e LTO_CLANG_THIN
+            LTO_TAG="-LTO"
+          else
+            echo "[-] Disabling LTO..."
+            ./scripts/config --file "$OUT_DIR/.config" \
+              -e LTO_NONE \
+              -d LTO \
+              -d LTO_CLANG \
+              -d LTO_CLANG_THIN \
+              -d LTO_CLANG_FULL
+            LTO_TAG=""
+          fi
+
+          ./scripts/config --file "$OUT_DIR/.config" -d IKHEADERS
+
+          VERSION_STR="${{ inputs.version || '1.0v' }}"
+          LOCALVER="-ArcKern+-${VERSION_STR}-FinaSU-PERMISSIVE${LTO_TAG}${OC_TAG}"
+
+          ./scripts/config --file "$OUT_DIR/.config" --set-str LOCALVERSION "$LOCALVER"
+          make -C "$(pwd)" O="$OUT_DIR" olddefconfig
+          grep -E '^CONFIG_LOCALVERSION=|^CONFIG_CPU_FREQ_DEFAULT_GOV_|^CONFIG_HZ_|^CONFIG_KSU' "$OUT_DIR/.config"
+
+          make -C "$(pwd)" O="$OUT_DIR" prepare
+          make -C "$(pwd)" O="$OUT_DIR" scripts
+          make -C "$(pwd)" O="$OUT_DIR" security/
+
+          make -C "$(pwd)" O="$OUT_DIR" -j"$(nproc)" KSU_REQUIRE_PREINIT=1 || make -C "$(pwd)" O="$OUT_DIR" -j1 KSU_REQUIRE_PREINIT=1
+
+      - name: Get kernel version
+        id: version
+        run: |
+          VERSION="${{ inputs.version || '1.0v' }}"
+          echo "VERSION=$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Package AnyKernel3
+        env:
+          ENABLE_LTO: ${{ inputs.enable_lto }}
+          ENABLE_OC: ${{ inputs.enable_oc }}
+          LOCK_MAX_FREQ: ${{ inputs.lock_max_freq }}
+        run: |
+          DATE=$(date -u +"%Y-%m-%d")
+          SUFFIX=""
+          [ "$ENABLE_LTO" = "true" ] && SUFFIX="${SUFFIX}-LTO"
+          if [ "$ENABLE_OC" = "true" ]; then
+            if [ "$LOCK_MAX_FREQ" = "true" ]; then
+              SUFFIX="${SUFFIX}-OC-MAX"
+            else
+              SUFFIX="${SUFFIX}-OC-COOL"
+            fi
+          fi
+
+          ZIP_NAME="ArcKern+-${{ steps.version.outputs.version }}-${DATE}-FinaSU-Permissive${SUFFIX}.zip"
+
+          git clone https://github.com/Halk56855/AnyKernel3-a04.git --depth 1 AnyKernel3
+          cp out/arch/arm64/boot/Image AnyKernel3/Image
+
+          if [ "$ENABLE_OC" = "true" ] && [ "$LOCK_MAX_FREQ" = "true" ]; then
+            cat << 'EOF' >> AnyKernel3/anykernel.sh
+
+          # Force Lock GPU to 900 MHz
+          if [ -w /proc/gpufreq/gpufreq_opp_freq ]; then
+            echo 900000 > /proc/gpufreq/gpufreq_opp_freq
+          fi
+          EOF
+          fi
+
+          (
+            cd AnyKernel3
+            zip -r9 "../$ZIP_NAME" . -x ".git/*"
+          )
+
+      - name: Upload AnyKernel3 ZIP
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ArcKern+-1.0v-FinaSU-Permissive
+          path: ArcKern+-*.zip
