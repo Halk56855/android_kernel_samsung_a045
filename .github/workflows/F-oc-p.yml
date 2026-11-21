@@ -268,10 +268,11 @@ jobs:
 
           ./scripts/config --file "$OUT_DIR/.config" --set-str LOCALVERSION "$LOCALVER"
           make -C "$(pwd)" O="$OUT_DIR" olddefconfig
-          grep -E '^CONFIG_LOCALVERSION=|^CONFIG_CPU_FREQ_DEFAULT_GOV_|^CONFIG_HZ_|^CONFIG_KSU' "$OUT_DIR/.config"
+          grep -E '^CONFIG_LOCALVERSION=|^CONFIG_CPU_FREQ_DEFAULT_GOV_|^CONFIG_HZ_|^CONFIG_KSU|^CONFIG_HEADERS_INSTALL' "$OUT_DIR/.config"
 
           make -C "$(pwd)" O="$OUT_DIR" prepare
           make -C "$(pwd)" O="$OUT_DIR" scripts
+          make -C "$(pwd)" O="$OUT_DIR" headers_install
           make -C "$(pwd)" O="$OUT_DIR" security/
 
           make -C "$(pwd)" O="$OUT_DIR" -j"$(nproc)" KSU_REQUIRE_PREINIT=1 || make -C "$(pwd)" O="$OUT_DIR" -j1 KSU_REQUIRE_PREINIT=1
