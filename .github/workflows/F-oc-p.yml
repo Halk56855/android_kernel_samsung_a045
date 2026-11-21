@@ -214,6 +214,10 @@ jobs:
               ./scripts/kconfig/merge_config.sh -m -O "$OUT_DIR" "$OUT_DIR/.config" arch/arm64/configs/touchdirt-oc.config
             fi
 
+            if [ -f "arch/arm64/configs/touchdirt-oc-f.config" ]; then
+              ./scripts/kconfig/merge_config.sh -m -O "$OUT_DIR" "$OUT_DIR/.config" arch/arm64/configs/touchdirt-oc-f.config
+            fi
+
             find arch/arm64/boot/dts drivers/misc/mediatek drivers/gpu -type f \( -name "*.dts*" -o -name "*.c" -o -name "*.h" \) -exec \
               sed -i -E 's/230[01]000/2500000/g; s/1800000/2000000/g; s/680000/900000/g' {} +
 
