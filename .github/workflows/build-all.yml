@@ -1,93 +1,74 @@
-name: TouchDirt - Build All
+name: ArcKern+ - Build BakaSU (v1.0)
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "TouchDirt version"
+        description: "Release tag / version"
         required: true
+        default: "v1.0"
         type: string
-        default: "v1.x.x"
+      enable_thinlto:
+        description: "Enable Clang ThinLTO"
+        required: true
+        default: true
+        type: boolean
+      enable_oc:
+        description: "Enable balanced OC (CPU 2500/2000 MHz, GPU 900 MHz)"
+        required: true
+        default: true
+        type: boolean
+      enable_ccache:
+        description: "Enable ccache for faster builds"
+        required: true
+        default: true
+        type: boolean
+      lock_max_freq:
+        description: "Lock max CPU/GPU frequencies (may increase heat)"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
-  actions: read
 
 jobs:
-  vanilla-enforcing:
-    name: Vanilla - Enforcing
-    uses: ./.github/workflows/vanilla-enforcing.yml
-    with:
-      version: ${{ inputs.version }}
-
-  vanilla-permissive:
-    name: Vanilla - Permissive
-    uses: ./.github/workflows/vanilla-permissive.yml
-    with:
-      version: ${{ inputs.version }}
-
-  bakasu-enforcing:
+  build_bakasu_enforcing:
     name: BakaSU - Enforcing
     uses: ./.github/workflows/bakasu-enforcing.yml
     with:
       version: ${{ inputs.version }}
+      enable_thinlto: ${{ inputs.enable_thinlto }}
+      enable_oc: ${{ inputs.enable_oc }}
+      enable_ccache: ${{ inputs.enable_ccache }}
+      lock_max_freq: ${{ inputs.lock_max_freq }}
 
-  bakasu-permissive:
+  build_bakasu_permissive:
     name: BakaSU - Permissive
     uses: ./.github/workflows/bakasu-permissive.yml
     with:
       version: ${{ inputs.version }}
+      enable_thinlto: ${{ inputs.enable_thinlto }}
+      enable_oc: ${{ inputs.enable_oc }}
+      enable_ccache: ${{ inputs.enable_ccache }}
+      lock_max_freq: ${{ inputs.lock_max_freq }}
 
-  release:
-    name: Publish Release
-    needs:
-      - vanilla-enforcing
-      - vanilla-permissive
-      - bakasu-enforcing
-      - bakasu-permissive
+  build_vanilla_enforcing:
+    name: Vanilla - Enforcing
+    uses: ./.github/workflows/vanilla-enforcing.yml
+    with:
+      version: ${{ inputs.version }}
+      enable_thinlto: ${{ inputs.enable_thinlto }}
+      enable_oc: ${{ inputs.enable_oc }}
+      enable_ccache: ${{ inputs.enable_ccache }}
+      lock_max_freq: ${{ inputs.lock_max_freq }}
 
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7.0.1
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v8.0.1
-        with:
-          path: release-assets
-
-      - name: List release assets
-        run: |
-          find release-assets -type f -print
-
-      - name: Get release version
-        id: version
-        run: |
-          FILE=$(find release-assets -type f -name '*.zip' | head -n 1)
-          VERSION=$(basename "$FILE" | sed -n 's/^TouchDirt-[^-]*-\(v[0-9.]*\)-.*/\1/p')
-
-          echo "Detected version: $VERSION"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          gh release delete "$VERSION" --yes --cleanup-tag 2>/dev/null || true
-
-          gh release create "$VERSION" \
-            release-assets/*/*.zip \
-            --title "TouchDirt $VERSION" \
-            --notes-file ".github/release-notes/${VERSION}.md"
-
-  bakasu-manager:
-    name: BakaSU Manager
-    needs:
-      - release
-    uses: ./.github/workflows/update-bakasu-manager.yml
+  build_vanilla_permissive:
+    name: Vanilla - Permissive
+    uses: ./.github/workflows/vanilla-permissive.yml
+    with:
+      version: ${{ inputs.version }}
+      enable_thinlto: ${{ inputs.enable_thinlto }}
+      enable_oc: ${{ inputs.enable_oc }}
+      enable_ccache: ${{ inputs.enable_ccache }}
+      lock_max_freq: ${{ inputs.lock_max_freq }}
