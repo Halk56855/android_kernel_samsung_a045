@@ -1,129 +1,126 @@
-name: Build TouchDirt Kernel, Vanilla, Enforcing
+name: Variant - Vanilla Enforcing
 
 on:
-  workflow_dispatch:
   workflow_call:
     inputs:
       version:
         required: true
         type: string
+      enable_thinlto:
+        required: true
+        type: boolean
+      enable_oc:
+        required: true
+        type: boolean
+      enable_ccache:
+        required: true
+        type: boolean
+      lock_max_freq:
+        required: true
+        type: boolean
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    env:
+      VARIANT_SLUG: vanilla-enforcing
+      VARIANT_LABEL: Vanilla-Enforcing
+      ROOT_MODE: vanilla
+      SELINUX_MODE: enforcing
+      ARCH: arm64
+      SUBARCH: arm64
+      DEFCONFIG: a04_defconfig
+      OUT_DIR: out
+      ANYKERNEL_REPO: https://github.com/Halk56855/AnyKernel3-a04.git
+      ANYKERNEL_BRANCH: main
 
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v7.0.1
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
         with:
-          submodules: recursive
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
-          sudo apt update
-          sudo apt install -y \
-            bc \
-            bison \
-            build-essential \
-            ccache \
-            cpio \
-            curl \
-            flex \
-            git \
-            libelf-dev \
-            libssl-dev \
-            lld \
-            python3 \
-            unzip \
-            xz-utils \
-            zip
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            bc bison build-essential ccache clang curl flex git \
+            libelf-dev libssl-dev lld llvm python3 zip
 
-      - name: Download GCC & Clang Toolchain
+      - name: Setup ccache
+        if: inputs.enable_ccache
+        uses: henderson/ccache-action@v1
+        with:
+          key: arckern-${{ env.VARIANT_SLUG }}-${{ inputs.version }}
+          max-size: 4G
+
+      - name: Configure kernel options
         run: |
-          mkdir -p toolchain/gcc toolchain/clang
-          cd toolchain/gcc
-          wget -q --show-progress --retry-connrefused --waitretry=2 --read-timeout=30 -t 5 \
-            https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz || \
-          wget -q --show-progress \
-            https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz -O gcc.tar.xz
-          tar -xf gcc.tar.xz -C ./
+          mkdir -p "${OUT_DIR}"
+          make O="${OUT_DIR}" ARCH="${ARCH}" "${DEFCONFIG}"
 
-          cd ../clang
-          wget -q --show-progress \
-            https://github.com/ravindu644/Android-Kernel-Tutorials/releases/download/toolchains/clang-r383902.tar.gz -O clang.tar.gz
-          mkdir -p host/linux-x86/clang-r383902
-          tar -xzf clang.tar.gz -C host/linux-x86/clang-r383902
+          # Clean Vanilla without BakaSU & Enforcing SELinux
+          ./scripts/config --file "${OUT_DIR}/.config" --disable CONFIG_BAKASU
+          ./scripts/config --file "${OUT_DIR}/.config" --disable CONFIG_SECURITY_SELINUX_DEVELOP
 
-      - name: Set environment
-        run: |
-          CLANG_PATH="$(pwd)/toolchain/clang/host/linux-x86/clang-r383902/bin"
-          GCC_PATH="$(pwd)/toolchain/gcc/arm-gnu-toolchain-14.2.rel1-x86_64-aarch64-none-linux-gnu/bin"
-
-          echo "$CLANG_PATH" >> $GITHUB_PATH
-          echo "CROSS_COMPILE=$GCC_PATH/aarch64-none-linux-gnu-" >> $GITHUB_ENV
-          echo "CROSS_COMPILE_ARM32=arm-linux-gnueabi-" >> $GITHUB_ENV
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "LD=ld.lld" >> $GITHUB_ENV
-          echo "AR=llvm-ar" >> $GITHUB_ENV
-          echo "NM=llvm-nm" >> $GITHUB_ENV
-          echo "OBJCOPY=llvm-objcopy" >> $GITHUB_ENV
-          echo "OBJDUMP=llvm-objdump" >> $GITHUB_ENV
-          echo "STRIP=llvm-strip" >> $GITHUB_ENV
-          echo "CLANG_TRIPLE=aarch64-linux-gnu-" >> $GITHUB_ENV
-          echo "ARCH=arm64" >> $GITHUB_ENV
-          echo "KCFLAGS=-w -I$(pwd)/out/security/selinux -I$(pwd)/security/selinux/include -I$(pwd)/security/selinux/ss -I$(pwd)/out/security/selinux/ss" >> $GITHUB_ENV
-          echo "CONFIG_SECTION_MISMATCH_WARN_ONLY=y" >> $GITHUB_ENV
-
-      - name: Build kernel
-        run: |
-          export ARCH=arm64
-          export SUBARCH=arm64
-
-          make -C $(pwd) O=$(pwd)/out ARCH=arm64 \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            CC=clang \
-            touchdirt-a04_defconfig
-
-          if [ -f "arch/arm64/configs/touchdirt.config" ]; then
-            ./scripts/kconfig/merge_config.sh -O "$(pwd)/out" "$(pwd)/out/.config" arch/arm64/configs/touchdirt.config
+          if [ "${{ inputs.enable_thinlto }}" = "true" ]; then
+            ./scripts/config --file "${OUT_DIR}/.config" --enable CONFIG_LTO_CLANG_THIN
           fi
 
-          if [ "${{ github.event_name }}" = "workflow_call" ]; then
-              sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-${{ inputs.version }}\"/" out/.config
-          else
-              sed -i "s/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"-TouchDirt-BETA\"/" out/.config
+          if [ "${{ inputs.enable_oc }}" = "true" ]; then
+            ./scripts/config --file "${OUT_DIR}/.config" --enable CONFIG_ARCKERN_OC_2500_2000_900
           fi
 
-          make -C $(pwd) O=$(pwd)/out ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang olddefconfig
+          if [ "${{ inputs.lock_max_freq }}" = "true" ]; then
+            ./scripts/config --file "${OUT_DIR}/.config" --enable CONFIG_ARCKERN_LOCK_MAX_FREQ
+          fi
 
-          make -C $(pwd) O=$(pwd)/out -j$(nproc) \
-            ARCH=arm64 \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            CC=clang
+          make O="${OUT_DIR}" ARCH="${ARCH}" olddefconfig
 
-      - name: Get kernel version
-        id: version
+      - name: Compile kernel image
         run: |
-          VERSION="${{ inputs.version }}"
-          echo "VERSION=$VERSION"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          CC_PREFIX=""
+          if [ "${{ inputs.enable_ccache }}" = "true" ]; then
+            CC_PREFIX="ccache "
+          fi
 
-      - name: Package AnyKernel3
+          make -j"$(nproc)" \
+            O="${OUT_DIR}" \
+            ARCH="${ARCH}" \
+            CC="${CC_PREFIX}clang" \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip
+
+      - name: Package AnyKernel3 flashable ZIP
         run: |
-          DATE=$(date -u +"%Y-%m-%d")
+          git clone --depth=1 -b "${ANYKERNEL_BRANCH}" "${ANYKERNEL_REPO}" anykernel
+          cp "${OUT_DIR}/arch/arm64/boot/Image.gz-dtb" anykernel/Image.gz-dtb 2>/dev/null || \
+          cp "${OUT_DIR}/arch/arm64/boot/Image.gz" anykernel/Image.gz
 
-          git clone https://github.com/DaniTheSillyFem/AnyKernel3 --depth 1
+          ZIP_NAME="ArcKern+-${{ inputs.version }}-a04-${VARIANT_SLUG}.zip"
+          cd anykernel
+          zip -r9 "../${ZIP_NAME}" . -x ".git*" "README.md"
+          cd ..
+          echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
 
-          cp out/arch/arm64/boot/Image AnyKernel3/Image
-
-          cd AnyKernel3
-          zip -r9 "../TouchDirt-Vanilla-${{ steps.version.outputs.version }}-${DATE}.zip" . -x ".git/*"
-
-      - name: Upload AnyKernel3 ZIP
-        uses: actions/upload-artifact@v7.0.1
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: TouchDirt-Vanilla-Enforcing
-          path: TouchDirt-*.zip
+          name: ArcKern+-${{ inputs.version }}-${{ env.VARIANT_SLUG }}
+          path: ${{ env.ZIP_NAME }}
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: ArcKern+ ${{ inputs.version }}
+          body_path: .github/release-notes/${{ inputs.version }}.md
+          files: ${{ env.ZIP_NAME }}
+          fail_on_unmatched_files: false
