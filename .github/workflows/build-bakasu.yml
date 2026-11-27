@@ -1,73 +1,8 @@
-name: ArcKern+ - Build BakaSU (v1.0)
+name: ArcKern+ - Build BakaSU
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: "ArcKern+ version"
-        required: true
-        type: string
-        default: "v1.0"
-      bakasu_sha:
-        description: "Exact BakaSU commit to build (leave empty for latest main)"
-        required: false
-        type: string
-        default: ""
-      nomount_sha:
-        description: "Exact NoMount commit to integrate (leave empty for latest master)"
-        required: false
-        type: string
-        default: ""
-      enable_thinlto:
-        description: "Enable Clang ThinLTO"
-        required: true
-        type: boolean
-        default: true
-      enable_oc:
-        description: "Enable balanced OC (CPU 2500/2000 MHz, GPU 900 MHz)"
-        required: true
-        type: boolean
-        default: true
-      enable_ccache:
-        description: "Enable ccache for faster builds"
-        required: true
-        type: boolean
-        default: true
-      lock_max_freq:
-        description: "Lock max CPU/GPU frequencies (may increase heat)"
-        required: true
-        type: boolean
-        default: false
-
   workflow_call:
-    inputs:
-      version:
-        required: true
-        type: string
-      bakasu_sha:
-        required: false
-        type: string
-        default: ""
-      nomount_sha:
-        required: false
-        type: string
-        default: ""
-      enable_thinlto:
-        required: false
-        type: boolean
-        default: true
-      enable_oc:
-        required: false
-        type: boolean
-        default: true
-      enable_ccache:
-        required: false
-        type: boolean
-        default: true
-      lock_max_freq:
-        required: false
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -75,29 +10,29 @@ permissions:
 
 jobs:
   resolve-upstreams:
-    name: Resolve upstream revisions
+    name: Resolve latest upstream revisions & release
     runs-on: ubuntu-latest
     outputs:
+      version: ${{ steps.resolve.outputs.version }}
       bakasu_sha: ${{ steps.resolve.outputs.bakasu_sha }}
       nomount_sha: ${{ steps.resolve.outputs.nomount_sha }}
 
     steps:
-      - name: Resolve exact upstream commits
+      - name: Resolve latest release tag & upstream commits
         id: resolve
         env:
-          REQUESTED_BAKASU: ${{ inputs.bakasu_sha }}
-          REQUESTED_NOMOUNT: ${{ inputs.nomount_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          BAKASU="$REQUESTED_BAKASU"
-          NOMOUNT="$REQUESTED_NOMOUNT"
-
-          if [ -z "$BAKASU" ]; then
-            BAKASU=$(git ls-remote https://github.com/Baka-SU/BakaSU.git refs/heads/main | awk '{print $1}')
+          LATEST_TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName // empty')
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG=$(git ls-remote --tags --sort=-v:refname "https://github.com/$GITHUB_REPOSITORY.git" | head -n1 | sed 's/.*refs\/tags\///;s/\^{}//')
+          fi
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="v1.0"
           fi
 
-          if [ -z "$NOMOUNT" ]; then
-            NOMOUNT=$(git ls-remote https://github.com/maxsteeel/nomount.git refs/heads/master | awk '{print $1}')
-          fi
+          BAKASU=$(git ls-remote https://github.com/Baka-SU/BakaSU.git refs/heads/main | awk '{print $1}')
+          NOMOUNT=$(git ls-remote https://github.com/maxsteeel/nomount.git refs/heads/master | awk '{print $1}')
 
           if ! [[ "$BAKASU" =~ ^[0-9a-f]{40}$ ]]; then
             echo "ERROR: Invalid BakaSU SHA: $BAKASU"
@@ -109,9 +44,11 @@ jobs:
             exit 1
           fi
 
+          echo "Latest Release Tag: $LATEST_TAG"
           echo "BakaSU: $BAKASU"
           echo "NoMount: $NOMOUNT"
 
+          echo "version=$LATEST_TAG" >> "$GITHUB_OUTPUT"
           echo "bakasu_sha=$BAKASU" >> "$GITHUB_OUTPUT"
           echo "nomount_sha=$NOMOUNT" >> "$GITHUB_OUTPUT"
 
@@ -120,26 +57,22 @@ jobs:
     needs: resolve-upstreams
     uses: ./.github/workflows/bakasu-enforcing.yml
     with:
-      version: ${{ inputs.version }}
-      bakasu_sha: ${{ needs.resolve-upstreams.outputs.bakasu_sha }}
-      nomount_sha: ${{ needs.resolve-upstreams.outputs.nomount_sha }}
-      enable_thinlto: ${{ inputs.enable_thinlto }}
-      enable_oc: ${{ inputs.enable_oc }}
-      enable_ccache: ${{ inputs.enable_ccache }}
-      lock_max_freq: ${{ inputs.lock_max_freq }}
+      version: ${{ needs.resolve-upstreams.outputs.version }}
+      enable_thinlto: true
+      enable_oc: true
+      enable_ccache: true
+      lock_max_freq: false
 
   bakasu-permissive:
     name: BakaSU - Permissive
     needs: resolve-upstreams
     uses: ./.github/workflows/bakasu-permissive.yml
     with:
-      version: ${{ inputs.version }}
-      bakasu_sha: ${{ needs.resolve-upstreams.outputs.bakasu_sha }}
-      nomount_sha: ${{ needs.resolve-upstreams.outputs.nomount_sha }}
-      enable_thinlto: ${{ inputs.enable_thinlto }}
-      enable_oc: ${{ inputs.enable_oc }}
-      enable_ccache: ${{ inputs.enable_ccache }}
-      lock_max_freq: ${{ inputs.lock_max_freq }}
+      version: ${{ needs.resolve-upstreams.outputs.version }}
+      enable_thinlto: true
+      enable_oc: true
+      enable_ccache: true
+      lock_max_freq: false
 
   release:
     name: Publish Release Assets
@@ -152,10 +85,10 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout release notes
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.version }}
+          ref: main
 
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -164,7 +97,7 @@ jobs:
 
       - name: Validate and prepare release metadata
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.resolve-upstreams.outputs.version }}
           BAKASU_SHA: ${{ needs.resolve-upstreams.outputs.bakasu_sha }}
           NOMOUNT_SHA: ${{ needs.resolve-upstreams.outputs.nomount_sha }}
         run: |
@@ -176,9 +109,8 @@ jobs:
           shopt -s nullglob
           ZIPS=(release-assets/*/*.zip)
 
-          if [ "${#ZIPS[@]}" -ne 2 ]; then
-            echo "ERROR: Expected exactly two kernel ZIPs, found ${#ZIPS[@]}."
-            printf '%s\n' "${ZIPS[@]}"
+          if [ "${#ZIPS[@]}" -lt 1 ]; then
+            echo "ERROR: Expected kernel ZIP artifacts, found 0."
             exit 1
           fi
 
@@ -189,17 +121,24 @@ jobs:
           echo "BakaSU: $BAKASU_SHA"
           echo "NoMount: $NOMOUNT_SHA"
 
-      - name: Update the fixed release without moving its tag
+      - name: Update release without moving its tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.resolve-upstreams.outputs.version }}
         run: |
+          NOTES_ARG=()
+          if [ -f ".github/release-notes/${VERSION}.md" ]; then
+            NOTES_ARG=(--notes-file ".github/release-notes/${VERSION}.md")
+          else
+            NOTES_ARG=(--notes "ArcKern+ ${VERSION} automated build for Samsung Galaxy A04 (SM-A045F / MT6765).")
+          fi
+
           if ! gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$VERSION" \
               --repo "$GITHUB_REPOSITORY" \
-              --target "$VERSION" \
+              --target main \
               --title "ArcKern+ $VERSION" \
-              --notes-file ".github/release-notes/$VERSION.md"
+              "${NOTES_ARG[@]}"
           fi
 
           ASSETS=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" --jq '.assets[].name')
@@ -221,7 +160,6 @@ jobs:
           gh release upload "$VERSION" "${ZIPS[@]}" \
             --repo "$GITHUB_REPOSITORY"
 
-          # Upload revision markers last.
           gh release upload "$VERSION" \
             release-assets/bakasu-commit.txt \
             release-assets/nomount-commit.txt \
@@ -233,5 +171,3 @@ jobs:
       - release
       - resolve-upstreams
     uses: ./.github/workflows/update-bakasu-manager.yml
-    with:
-      bakasu_sha: ${{ needs.resolve-upstreams.outputs.bakasu_sha }}
