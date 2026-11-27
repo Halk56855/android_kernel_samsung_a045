@@ -1,14 +1,13 @@
-
-name: TouchDirt - Build BakaSU
+name: ArcKern+ - Build BakaSU (v1.0)
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "TouchDirt version"
+        description: "ArcKern+ version"
         required: true
         type: string
-        default: "v1.0.3"
+        default: "v1.0"
       bakasu_sha:
         description: "Exact BakaSU commit to build (leave empty for latest main)"
         required: false
@@ -19,6 +18,26 @@ on:
         required: false
         type: string
         default: ""
+      enable_thinlto:
+        description: "Enable Clang ThinLTO"
+        required: true
+        type: boolean
+        default: true
+      enable_oc:
+        description: "Enable balanced OC (CPU 2500/2000 MHz, GPU 900 MHz)"
+        required: true
+        type: boolean
+        default: true
+      enable_ccache:
+        description: "Enable ccache for faster builds"
+        required: true
+        type: boolean
+        default: true
+      lock_max_freq:
+        description: "Lock max CPU/GPU frequencies (may increase heat)"
+        required: true
+        type: boolean
+        default: false
 
   workflow_call:
     inputs:
@@ -26,11 +45,29 @@ on:
         required: true
         type: string
       bakasu_sha:
-        required: true
+        required: false
         type: string
+        default: ""
       nomount_sha:
-        required: true
+        required: false
         type: string
+        default: ""
+      enable_thinlto:
+        required: false
+        type: boolean
+        default: true
+      enable_oc:
+        required: false
+        type: boolean
+        default: true
+      enable_ccache:
+        required: false
+        type: boolean
+        default: true
+      lock_max_freq:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -86,6 +123,10 @@ jobs:
       version: ${{ inputs.version }}
       bakasu_sha: ${{ needs.resolve-upstreams.outputs.bakasu_sha }}
       nomount_sha: ${{ needs.resolve-upstreams.outputs.nomount_sha }}
+      enable_thinlto: ${{ inputs.enable_thinlto }}
+      enable_oc: ${{ inputs.enable_oc }}
+      enable_ccache: ${{ inputs.enable_ccache }}
+      lock_max_freq: ${{ inputs.lock_max_freq }}
 
   bakasu-permissive:
     name: BakaSU - Permissive
@@ -95,6 +136,10 @@ jobs:
       version: ${{ inputs.version }}
       bakasu_sha: ${{ needs.resolve-upstreams.outputs.bakasu_sha }}
       nomount_sha: ${{ needs.resolve-upstreams.outputs.nomount_sha }}
+      enable_thinlto: ${{ inputs.enable_thinlto }}
+      enable_oc: ${{ inputs.enable_oc }}
+      enable_ccache: ${{ inputs.enable_ccache }}
+      lock_max_freq: ${{ inputs.lock_max_freq }}
 
   release:
     name: Publish Release Assets
@@ -108,12 +153,12 @@ jobs:
 
     steps:
       - name: Checkout release notes
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@v4
         with:
-          ref: v1.0.3
+          ref: ${{ inputs.version }}
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v4
         with:
           path: release-assets
 
@@ -152,8 +197,8 @@ jobs:
           if ! gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$VERSION" \
               --repo "$GITHUB_REPOSITORY" \
-              --target v1.0.3 \
-              --title "TouchDirt $VERSION" \
+              --target "$VERSION" \
+              --title "ArcKern+ $VERSION" \
               --notes-file ".github/release-notes/$VERSION.md"
           fi
 
@@ -163,7 +208,7 @@ jobs:
             [ -z "$ASSET" ] && continue
 
             case "$ASSET" in
-              TouchDirt-BakaSU-*.zip|bakasu-commit.txt|nomount-commit.txt)
+              ArcKern+-*.zip|bakasu-commit.txt|nomount-commit.txt)
                 gh release delete-asset "$VERSION" "$ASSET" \
                   --repo "$GITHUB_REPOSITORY" --yes
                 ;;
@@ -190,4 +235,3 @@ jobs:
     uses: ./.github/workflows/update-bakasu-manager.yml
     with:
       bakasu_sha: ${{ needs.resolve-upstreams.outputs.bakasu_sha }}
-
